@@ -23,12 +23,12 @@
         "dev": "wrangler dev"
     },
     "devDependencies": {
-        "@azure/functions": "4.16.5",
-        "@cloudflare/vitest-plugin": "1.4.5",
+        "@azure/functions": "4.17.0",
+        "@cloudflare/vitest-plugin": "1.4.11",
         "@types/node": "24.19.2",
         "esbuild": "0.28.2",
         "typescript": "7.0.2",
         "vitest": "5.0.5",
-        "wrangler": "4.151.2"
+        "wrangler": "4.156.0"
     }
 }
