@@ -8,6 +8,7 @@ const run = crypto.randomUUID()
 const vars = env as unknown as Record<string, string>
 const mailbox = { host: vars.LIVE_IMAP_HOST!, user: vars.LIVE_IMAP_USER!, password: vars.LIVE_IMAP_PASSWORD! }
 const title = (channel: string) => `notify-relay live test ${run} via ${channel} on ${vars.LIVE_TARGET}`
+const authorization = `Bearer ${vars.LIVE_TOKEN}`
 
 async function call(method: string, path: string, init: RequestInit<IncomingRequestCfProperties> = {}): Promise<Response> {
     if (vars.LIVE_RELAY_URL) return fetch(new URL(path, vars.LIVE_RELAY_URL), { method, ...init })
@@ -28,7 +29,7 @@ async function send(channel: string, html = false): Promise<unknown> {
         }),
     }
     const response = await call('POST', `/webhook?channels=${channel}`, {
-        headers: { authorization: 'Bearer nr_live' },
+        headers: { authorization },
         body: JSON.stringify(message),
     })
     return response.json()
@@ -65,6 +66,31 @@ describe('live', () => {
         expect(await send('loki')).toEqual({ messages: [{ delivered: ['loki'], failed: [] }] })
         expect(await readBack()).toBe(true)
     }, 90_000)
+
+    it('refuses a request without a token', async () => {
+        const response = await call('POST', '/webhook?channels=loki', { body: JSON.stringify({ title: title('loki') }) })
+        expect(response.status).toBe(401)
+        expect(response.headers.get('www-authenticate')).toBe('Bearer')
+    })
+
+    it('refuses a body over 64 KB', async () => {
+        const response = await call('POST', '/webhook?channels=loki', { headers: { authorization }, body: 'x'.repeat(64 * 1024 + 1) })
+        expect(response.status).toBe(413)
+    })
+
+    // A platform may read a body of unknown length differently from one with a Content-Length, as Azure's
+    // host does, and a stream of our own has no length, so it goes out chunked
+    it('takes a body sent chunked', async () => {
+        const json = JSON.stringify({ title: title('loki'), text: 'Sent chunked, without a length.' })
+        const body = new ReadableStream({
+            start(controller) {
+                controller.enqueue(new TextEncoder().encode(json))
+                controller.close()
+            },
+        })
+        const response = await call('POST', '/webhook?channels=loki', { headers: { authorization }, body })
+        expect(await response.json()).toEqual({ messages: [{ delivered: ['loki'], failed: [] }] })
+    })
 
     it.each([
         ['smtp-587', 'plain text', false],
