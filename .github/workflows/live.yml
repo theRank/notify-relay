@@ -1,8 +1,9 @@
 name: Live
 
 # Sends through real channels and reads each back: Loki through its query API, and mail, sent through
-# one SMTP server on 587 and 465 and through the Gmail API, over IMAP. It runs once on the Workers
-# runtime and once through the container image. Runs on main only, after merges, weekly and by hand, so
+# one SMTP server on 587 and 465 and through the Gmail API, over IMAP. With LIVE_BARK_KEY set, it also
+# pushes through Bark, which only the phone shows. It runs once on the Workers runtime and once through
+# the container image. Runs on main only, after merges, weekly and by hand, so
 # no unmerged code sees the secrets: a dispatch from another branch is skipped, and the `live`
 # environment holding them admits only main as well. Endpoints and addresses are secrets too, so the
 # public log masks them. Not a required check: a provider outage turns it red without blocking a merge.
@@ -70,4 +71,5 @@ jobs:
           LIVE_IMAP_HOST: ${{ secrets.LIVE_IMAP_HOST }}
           LIVE_IMAP_USER: ${{ secrets.LIVE_IMAP_USER }}
           LIVE_IMAP_PASSWORD: ${{ secrets.LIVE_IMAP_PASSWORD }}
+          LIVE_BARK_KEY: ${{ secrets.LIVE_BARK_KEY }}
         run: npm run test:live

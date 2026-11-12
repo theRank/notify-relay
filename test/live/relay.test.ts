@@ -19,7 +19,7 @@ async function call(method: string, path: string, init: RequestInit<IncomingRequ
     return response
 }
 
-async function send(channel: string, html = false): Promise<unknown> {
+async function send(channel: string, html = false, fields: object = {}): Promise<unknown> {
     const what = `Sent through ${channel} on ${vars.LIVE_TARGET} by the live test, ${html ? 'as HTML with a plain-text alternative' : 'as plain text'}.`
     const message = {
         title: title(channel),
@@ -27,6 +27,7 @@ async function send(channel: string, html = false): Promise<unknown> {
         ...(html && {
             rich: `<p>${what}</p><p>Commit: <a href="${vars.LIVE_COMMIT_URL}"><code>${vars.LIVE_COMMIT}</code></a><br>Run: <a href="${vars.LIVE_RUN_URL}">${vars.LIVE_RUN_URL}</a></p>`,
         }),
+        ...fields,
     }
     const response = await call('POST', `/webhook?channels=${channel}`, {
         headers: { authorization },
@@ -102,4 +103,10 @@ describe('live', () => {
         expect(flags).toBeDefined()
         if (flags!.some((flag) => flag.toLowerCase() === '\\junk')) console.warn(`${channel}: landed in junk`)
     }, 90_000)
+
+    // Nothing reads a push back, so the test sees as far as the server accepting it; the phone shows the
+    // rest, in a group of its own that Bark can mute
+    it.skipIf(!vars.CHANNEL_BARK_TYPE)('pushes through Bark', async () => {
+        expect(await send('bark', false, { group: 'notify-relay live test' })).toEqual({ messages: [{ delivered: ['bark'], failed: [] }] })
+    })
 })
