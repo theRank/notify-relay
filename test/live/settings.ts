@@ -1,5 +1,6 @@
 // The settings of the relay under the live test, built from the LIVE_* variables. To test a deployment,
-// print them in the form its platform takes: LIVE_RELAY_TOKEN=nr_... node test/live/settings.ts env|json|lambda
+// print them in the form its platform takes:
+// LIVE_RELAY_TOKEN=nr_... LIVE_NTFY_TOPIC=... node test/live/settings.ts env|json|lambda
 
 const NAMES = [
     'LIVE_LOKI_URL',
@@ -20,9 +21,9 @@ const NAMES = [
     'LIVE_IMAP_PASSWORD',
 ] as const
 
-// Channels that deliver to a device of one's own, which the test cannot read back from. Without the
-// variable, the relay under test has no such channel and its test is skipped
-const OPTIONAL = ['LIVE_BARK_KEY', 'LIVE_BARK_ENCRYPTION', 'LIVE_BARK_ENCRYPTION_KEY'] as const
+// Bark delivers to a device of one's own, which the test cannot read back from: without its key, the
+// relay under test has no bark channel and its test is skipped. The ntfy topic has a default
+const OPTIONAL = ['LIVE_BARK_KEY', 'LIVE_BARK_ENCRYPTION', 'LIVE_BARK_ENCRYPTION_KEY', 'LIVE_NTFY_TOPIC'] as const
 
 export type Live = Record<(typeof NAMES)[number], string> & Partial<Record<(typeof OPTIONAL)[number], string>>
 
@@ -32,7 +33,13 @@ export function readLive(env: NodeJS.ProcessEnv = process.env): Live {
     return Object.fromEntries([...NAMES, ...OPTIONAL].filter((name) => env[name]).map((name) => [name, env[name]!])) as Live
 }
 
-export function relaySettings(live: Live, token: string): Record<string, string> {
+// ntfy.sh needs no account: a topic nobody can guess, fresh each run, keeps the test's messages its own.
+// A deployment and the test against it run apart, so they share LIVE_NTFY_TOPIC instead
+export function ntfyTopic(live: Live): string {
+    return live.LIVE_NTFY_TOPIC ?? `notify-relay-live-${crypto.randomUUID()}`
+}
+
+export function relaySettings(live: Live, token: string, topic: string): Record<string, string> {
     const smtp = (id: string, port: string) => ({
         [`CHANNEL_${id}_TYPE`]: 'smtp',
         [`CHANNEL_${id}_HOST`]: live.LIVE_SMTP_HOST,
@@ -56,6 +63,8 @@ export function relaySettings(live: Live, token: string): Record<string, string>
         CHANNEL_GMAIL_FROM: live.LIVE_GMAIL_FROM,
         CHANNEL_GMAIL_TO: live.LIVE_GMAIL_TO,
         ...(live.LIVE_BARK_KEY && { CHANNEL_BARK_TYPE: 'bark', CHANNEL_BARK_KEY: live.LIVE_BARK_KEY }),
+        CHANNEL_NTFY_TYPE: 'ntfy',
+        CHANNEL_NTFY_TOPIC: topic,
         // The same device again, end-to-end encrypted as its app is set to decrypt
         ...(live.LIVE_BARK_KEY &&
             live.LIVE_BARK_ENCRYPTION &&
@@ -79,10 +88,10 @@ const FORMATS: Record<string, (settings: Record<string, string>) => string> = {
 
 if (import.meta.main) {
     const format = FORMATS[process.argv[2] ?? '']
-    const token = process.env.LIVE_RELAY_TOKEN
-    if (!format || !token) {
-        console.error('usage: LIVE_RELAY_TOKEN=nr_... node test/live/settings.ts env|json|lambda')
+    const { LIVE_RELAY_TOKEN: token, LIVE_NTFY_TOPIC: topic } = process.env
+    if (!format || !token || !topic) {
+        console.error('usage: LIVE_RELAY_TOKEN=nr_... LIVE_NTFY_TOPIC=... node test/live/settings.ts env|json|lambda')
         process.exit(2)
     }
-    process.stdout.write(format(relaySettings(readLive(), token)))
+    process.stdout.write(format(relaySettings(readLive(), token, topic)))
 }

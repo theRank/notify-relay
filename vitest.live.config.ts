@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { cloudflareTest } from '@cloudflare/vitest-plugin'
 import { defineConfig } from 'vitest/config'
-import { readLive, relaySettings } from './test/live/settings'
+import { ntfyTopic, readLive, relaySettings } from './test/live/settings'
 
 const live = readLive()
 
@@ -14,8 +14,9 @@ const { LIVE_IMAGE: image, LIVE_RELAY_URL: deployed, LIVE_RELAY_TOKEN } = proces
 if (image && deployed) throw new Error('set LIVE_IMAGE or LIVE_RELAY_URL, not both')
 // A deployment is reachable by anyone, so its token is a secret rather than a fixed one
 if (deployed && !LIVE_RELAY_TOKEN) throw new Error('LIVE_RELAY_URL needs LIVE_RELAY_TOKEN')
+if (deployed && !live.LIVE_NTFY_TOPIC) throw new Error('LIVE_RELAY_URL needs LIVE_NTFY_TOPIC, the topic the deployment publishes to')
 const token = deployed ? LIVE_RELAY_TOKEN! : 'nr_live'
-const relay = relaySettings(live, token)
+const relay = relaySettings(live, token, ntfyTopic(live))
 const relayUrl = deployed ?? (image ? await start(image, relay) : undefined)
 const target = deployed ? (process.env.LIVE_TARGET ?? new URL(deployed).host) : image ? 'Docker' : 'Workers'
 
