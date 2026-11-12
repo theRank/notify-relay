@@ -109,4 +109,10 @@ describe('live', () => {
     it.skipIf(!vars.CHANNEL_BARK_TYPE)('pushes through Bark', async () => {
         expect(await send('bark', false, { group: 'notify-relay live test' })).toEqual({ messages: [{ delivered: ['bark'], failed: [] }] })
     })
+
+    // Only the phone can tell whether it decrypted: it shows "Decryption Failed" otherwise
+    it.skipIf(!vars.CHANNEL_BARK_SEALED_TYPE)('pushes through Bark, end-to-end encrypted', async () => {
+        const outcome = { messages: [{ delivered: ['bark-sealed'], failed: [] }] }
+        expect(await send('bark-sealed', false, { group: 'notify-relay live test' })).toEqual(outcome)
+    })
 })
