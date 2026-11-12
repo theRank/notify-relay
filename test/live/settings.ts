@@ -22,7 +22,7 @@ const NAMES = [
 
 // Channels that deliver to a device of one's own, which the test cannot read back from. Without the
 // variable, the relay under test has no such channel and its test is skipped
-const OPTIONAL = ['LIVE_BARK_KEY'] as const
+const OPTIONAL = ['LIVE_BARK_KEY', 'LIVE_BARK_ENCRYPTION', 'LIVE_BARK_ENCRYPTION_KEY'] as const
 
 export type Live = Record<(typeof NAMES)[number], string> & Partial<Record<(typeof OPTIONAL)[number], string>>
 
@@ -56,6 +56,15 @@ export function relaySettings(live: Live, token: string): Record<string, string>
         CHANNEL_GMAIL_FROM: live.LIVE_GMAIL_FROM,
         CHANNEL_GMAIL_TO: live.LIVE_GMAIL_TO,
         ...(live.LIVE_BARK_KEY && { CHANNEL_BARK_TYPE: 'bark', CHANNEL_BARK_KEY: live.LIVE_BARK_KEY }),
+        // The same device again, end-to-end encrypted as its app is set to decrypt
+        ...(live.LIVE_BARK_KEY &&
+            live.LIVE_BARK_ENCRYPTION &&
+            live.LIVE_BARK_ENCRYPTION_KEY && {
+                CHANNEL_BARK_SEALED_TYPE: 'bark',
+                CHANNEL_BARK_SEALED_KEY: live.LIVE_BARK_KEY,
+                CHANNEL_BARK_SEALED_ENCRYPTION: live.LIVE_BARK_ENCRYPTION,
+                CHANNEL_BARK_SEALED_ENCRYPTION_KEY: live.LIVE_BARK_ENCRYPTION_KEY,
+            }),
         TOKEN_LIVE: token,
     }
 }

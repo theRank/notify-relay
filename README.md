@@ -237,13 +237,22 @@ by group, and a message with the same `key` replaces the notification.
 |---|---|---|
 | `KEY` | secret | The device key Bark's app shows. Whoever has it can push to the device |
 | `SERVER` | variable, optional | A Bark server of your own, e.g. `https://bark.example.com`. Defaults to `https://api.day.app` |
+| `ENCRYPTION` | variable, optional | `AES128-GCM`, `AES192-GCM`, `AES256-GCM` or the same with `CBC`: encrypts each push end to end |
+| `ENCRYPTION_KEY` | secret, optional | The key set in Bark's encryption settings, 16, 24 or 32 ASCII characters to match `ENCRYPTION` |
 
 - A channel pushes to one device. To reach several, configure a channel for each and name them all in
   `channels`.
-- Bark's server and Apple's push service see each notification as sent.
+- Without encryption, Bark's server and Apple's push service see each notification as sent. With it, they
+  see the device key, the `key` digest, which the server replaces by, and ciphertext only the device can
+  decrypt. Set the same algorithm, mode and key in the app; its IV does not matter, since each push
+  carries a fresh one. Prefer GCM, which also detects tampering. The app's ECB is not offered. A push the
+  app cannot decrypt shows as *Decryption Failed*.
 - `key` reaches Bark as a digest, so a key of any length works. Replacing needs Bark 1.5.2 and
   bark-server 2.2.5 or later.
-- A refused push fails as e.g. `HTTP 400`, without the server's text, which can name the key.
+- Apple takes at most 4 KB per push, so a longer message fails, as `HTTP 500`; encrypted, about a quarter
+  less fits.
+- A refused push fails as e.g. `HTTP 400`, without the server's text, which can name the key. A wrong
+  `ENCRYPTION` or `ENCRYPTION_KEY` fails without pushing.
 
 ## Platforms
 
@@ -439,7 +448,9 @@ over 64 KB, and takes one sent chunked. Each body links the commit and the run. 
 `LIVE_GMAIL_CLIENT_SECRET`, `LIVE_GMAIL_REFRESH_TOKEN`, `LIVE_GMAIL_FROM` and `LIVE_GMAIL_TO`; and
 `LIVE_IMAP_HOST`, `LIVE_IMAP_USER` and `LIVE_IMAP_PASSWORD`. With `LIVE_BARK_KEY` set, it also pushes
 through Bark to that device, in a group of its own; nothing reads the push back, so the test passes once
-Bark's server accepts it, and the phone shows the rest. With `LIVE_IMAGE` naming an image, the relay
+Bark's server accepts it, and the phone shows the rest. With `LIVE_BARK_ENCRYPTION` and
+`LIVE_BARK_ENCRYPTION_KEY` too, as set in the app, a second push goes encrypted, as `bark-sealed`; the
+phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_IMAGE` naming an image, the relay
 under test is a container of it, given the same settings, instead of the Worker. The
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
 
