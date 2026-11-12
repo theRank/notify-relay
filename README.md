@@ -119,6 +119,9 @@ code.
 - A secret may hold several tokens separated by spaces, so a rotation can overlap.
 - Tokens are compared in constant time against every candidate. Failures are a bare 401.
 - Tokens are never accepted in the query string, which ends up in logs.
+- Tokens travel in a header, so give senders `https://` URLs. A platform's redirect from HTTP to HTTPS
+  comes after the request, token included, has crossed in the clear: it makes a sender misconfigured
+  with `http://` fail, it does not protect it. Rotate a token sent that way.
 
 Generate a token with the `nr_` prefix, which makes it easy for secret scanners to recognise:
 
@@ -243,6 +246,8 @@ npx wrangler secret put TOKEN_GITHUB
   `secrets.required`: the first deploy succeeds, then `/healthz` stays 503 until the secrets are in.
 - `workers_dev` and preview URLs are off and no routes are declared. Attach a custom domain yourself
   (dashboard, Terraform, or `routes` in your own config); deploys then leave it alone.
+- A custom domain answers plain HTTP too, and passes it to the Worker, unless the zone's *Always Use
+  HTTPS* is on.
 
 ### Node
 
@@ -257,7 +262,8 @@ PORT=8080 TOKEN_GITHUB=nr_... CHANNEL_LOGS_TYPE=loki CHANNEL_LOGS_URL=https://..
 - Settings are environment variables with the same names as on Workers. Every `TOKEN_*` variable is a
   sender token and every `CHANNEL_*_TYPE` declares a channel, so keep other variables of those shapes out
   of the process's environment.
-- `PORT` is where it listens, 8080 by default.
+- `PORT` is where it listens, 8080 by default, over plain HTTP: put a proxy or load balancer that
+  terminates TLS in front of it.
 - `SIGTERM` or `SIGINT` stops new connections; requests in flight finish first.
 - Unlike a Worker, it can reach hosts on a private network, and port 25 where the host allows it.
 
@@ -275,6 +281,8 @@ docker run --publish 8080:8080 --env-file relay.env ghcr.io/therank/notify-relay
 
 - `relay.env` holds the settings, one `NAME=value` per line. Docker takes each value as written, quotes
   included.
+- It serves plain HTTP, as on Node. Platforms such as Cloud Run terminate TLS in front of it; with
+  `docker run`, a proxy has to.
 - `latest` moves with every merge; pin `sha-<commit>` where a deploy must be repeatable.
 - To build it yourself: `docker build --tag notify-relay .`. The base image is pinned by digest, and
   Dependabot proposes its updates weekly.
@@ -321,6 +329,7 @@ aws lambda add-permission --function-name notify-relay --statement-id function-u
     --action lambda:InvokeFunctionUrl --principal '*' --function-url-auth-type NONE
 aws lambda add-permission --function-name notify-relay --statement-id function-invoke \
     --action lambda:InvokeFunction --principal '*' --invoked-via-function-url
+aws lambda put-function-concurrency --function-name notify-relay --reserved-concurrent-executions <n>
 ```
 
 - Settings are the function's environment variables, as on Node: `env.json` is
@@ -330,6 +339,11 @@ aws lambda add-permission --function-name notify-relay --statement-id function-i
   which the console creates by itself; without either, the URL answers 403.
 - The timeout must cover the slowest delivery: up to 5 seconds per channel attempt, with fallbacks tried
   one after another. Lambda's default of 3 seconds is too short.
+- Every request is an invocation, one without a token too, and draws on the concurrency the account
+  shares among all its functions in the region, 1,000 by default. Reserving `n` caps the relay at `n`
+  and sets those aside for it, so a flood throttles only the relay. Lambda keeps 100 unreserved, so an
+  account still on the lower quota AWS gives new accounts cannot reserve any yet; skip that command
+  until AWS raises it.
 - A function reaches a private network only from inside a VPC, and AWS blocks port 25 unless asked.
 
 ### Azure Functions
@@ -343,7 +357,8 @@ npm ci
 npm run build:azure
 (cd dist/azure && zip ../azure.zip host.json package.json index.js)
 az functionapp create --name <app> --resource-group <group> --storage-account <account> \
-    --flexconsumption-location <region> --runtime node --runtime-version 24
+    --flexconsumption-location <region> --runtime node --runtime-version 24 \
+    --https-only true --maximum-instance-count <n>
 az functionapp config appsettings set --name <app> --resource-group <group> \
     --settings FUNCTIONS_REQUEST_BODY_SIZE_LIMIT=1048576 @settings.json
 az functionapp deployment source config-zip --name <app> --resource-group <group> --src dist/azure.zip
@@ -353,6 +368,10 @@ az functionapp deployment source config-zip --name <app> --resource-group <group
   Node: `settings.json` is `{"TOKEN_GITHUB": "nr_...", ...}`, with every value a string.
 - The function takes every path and method under the app's root, without the usual `/api` prefix, and
   as `anonymous`, leaving authentication to the relay's tokens.
+- An app accepts plain HTTP unless created with `--https-only true`, which redirects it to HTTPS.
+- Every request is an execution, one without a token too, and the app scales out with them, to 100
+  instances by default. `--maximum-instance-count` caps that; `az functionapp scale config set` changes
+  it later.
 - The host reads a body that comes with a length into memory before the function runs, up to 100 MB by
   default. `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT` bounds that: up to 1 MB, a body over 64 KB still gets the
   relay's 413; past it, the host answers an empty 500. A chunked body streams to the function, which
