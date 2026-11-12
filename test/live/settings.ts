@@ -20,12 +20,16 @@ const NAMES = [
     'LIVE_IMAP_PASSWORD',
 ] as const
 
-export type Live = Record<(typeof NAMES)[number], string>
+// Channels that deliver to a device of one's own, which the test cannot read back from. Without the
+// variable, the relay under test has no such channel and its test is skipped
+const OPTIONAL = ['LIVE_BARK_KEY'] as const
+
+export type Live = Record<(typeof NAMES)[number], string> & Partial<Record<(typeof OPTIONAL)[number], string>>
 
 export function readLive(env: NodeJS.ProcessEnv = process.env): Live {
     const missing = NAMES.filter((name) => !env[name])
     if (missing.length > 0) throw new Error(`missing ${missing.join(', ')}`)
-    return Object.fromEntries(NAMES.map((name) => [name, env[name]!])) as Live
+    return Object.fromEntries([...NAMES, ...OPTIONAL].filter((name) => env[name]).map((name) => [name, env[name]!])) as Live
 }
 
 export function relaySettings(live: Live, token: string): Record<string, string> {
@@ -51,6 +55,7 @@ export function relaySettings(live: Live, token: string): Record<string, string>
         CHANNEL_GMAIL_REFRESH_TOKEN: live.LIVE_GMAIL_REFRESH_TOKEN,
         CHANNEL_GMAIL_FROM: live.LIVE_GMAIL_FROM,
         CHANNEL_GMAIL_TO: live.LIVE_GMAIL_TO,
+        ...(live.LIVE_BARK_KEY && { CHANNEL_BARK_TYPE: 'bark', CHANNEL_BARK_KEY: live.LIVE_BARK_KEY }),
         TOKEN_LIVE: token,
     }
 }
