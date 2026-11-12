@@ -1,13 +1,13 @@
 name: Live
 
-# Sends through real channels and reads each back: Loki through its query API, and mail, sent through
-# one SMTP server on 587 and 465 and through the Gmail API, over IMAP. With LIVE_BARK_KEY set, it also
-# pushes through Bark, in the clear and, with LIVE_BARK_ENCRYPTION and its key, encrypted, which only the
-# phone shows. It runs once on the Workers runtime and once through the container image. Runs on main
-# only, after merges, weekly and by hand, so no unmerged code sees the secrets: a dispatch from another
-# branch is skipped, and the `live` environment holding them admits only main as well. Endpoints and
-# addresses are secrets too, so the public log masks them. Not a required check: a provider outage turns
-# it red without blocking a merge.
+# Sends through real channels and reads each back: Loki through its query API, ntfy through a fresh topic
+# on ntfy.sh, and mail, sent through one SMTP server on 587 and 465 and through the Gmail API, over IMAP.
+# With LIVE_BARK_KEY set, it also pushes through Bark, in the clear and, with LIVE_BARK_ENCRYPTION and its
+# key, encrypted, which only the phone shows. It runs once on the Workers runtime and once through the
+# container image. Runs on main only, after merges, weekly and by hand, so no unmerged code sees the
+# secrets: a dispatch from another branch is skipped, and the `live` environment holding them admits only
+# main as well. Endpoints and addresses are secrets too, so the public log masks them. Not a required
+# check: a provider outage turns it red without blocking a merge.
 
 on:
   push:

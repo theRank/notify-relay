@@ -1,6 +1,7 @@
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
+import { keyId } from '../../src/outbound/key'
 import worker from '../../src/platforms/cloudflare'
 import { arrival } from './imap'
 
@@ -50,6 +51,20 @@ async function readBack(): Promise<boolean> {
     return false
 }
 
+// The topic's cached messages, as ntfy keeps them for subscribers that poll
+async function published(subject: string): Promise<Record<string, unknown> | undefined> {
+    const topic = new URL(`${vars.CHANNEL_NTFY_TOPIC}/json`, 'https://ntfy.sh/')
+    topic.searchParams.set('poll', '1')
+    for (const deadline = Date.now() + 30_000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 2000))) {
+        const response = await fetch(topic)
+        expect(response.status).toBe(200)
+        const lines = (await response.text()).split('\n').filter((line) => line !== '')
+        const found = lines.map((line) => JSON.parse(line) as Record<string, unknown>).find((message) => message.title === subject)
+        if (found) return found
+    }
+    return undefined
+}
+
 async function received(channel: string): Promise<string[] | undefined> {
     for (const deadline = Date.now() + 60_000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 2000))) {
         const flags = await arrival(mailbox, title(channel))
@@ -67,6 +82,18 @@ describe('live', () => {
         expect(await send('loki')).toEqual({ messages: [{ delivered: ['loki'], failed: [] }] })
         expect(await readBack()).toBe(true)
     }, 90_000)
+
+    it('publishes to ntfy, where the message can be read back with its priority, Markdown and sequence ID', async () => {
+        const key = `live-${run}`
+        const rich = `Sent through **ntfy** on ${vars.LIVE_TARGET} by the live test, as Markdown.`
+        expect(await send('ntfy', false, { rich, level: 'high', key })).toEqual({ messages: [{ delivered: ['ntfy'], failed: [] }] })
+        expect(await published(title('ntfy'))).toMatchObject({
+            message: rich,
+            content_type: 'text/markdown',
+            priority: 4,
+            sequence_id: await keyId(key),
+        })
+    }, 60_000)
 
     it('refuses a request without a token', async () => {
         const response = await call('POST', '/webhook?channels=loki', { body: JSON.stringify({ title: title('loki') }) })

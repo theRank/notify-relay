@@ -18,7 +18,7 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy
 ```
 
 ## API
@@ -254,6 +254,30 @@ by group, and a message with the same `key` replaces the notification.
 - A refused push fails as e.g. `HTTP 400`, without the server's text, which can name the key. A wrong
   `ENCRYPTION` or `ENCRYPTION_KEY` fails without pushing.
 
+### `ntfy`
+
+Publishes to a topic on [ntfy](https://ntfy.sh), whose Android, iOS and web apps subscribe to it. `title` is
+the notification's title and `text` its message, which `rich`, when given, replaces as Markdown. A
+message with only a title shows it as the message, since ntfy fills an empty one with `triggered`.
+`level` sets the priority: `low` is 2 (no sound or vibration), `normal` 3, `high` 4 and `critical` 5
+(long vibration bursts and a pop-over). `url` opens on tap, and a message with the same `key` replaces
+the notification. `group` is not used.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `TOPIC` | secret | Up to 64 of `A-Z`, `a-z`, `0-9`, `-` and `_`. Without access control on the server, whoever knows it can read and publish, so make it unguessable |
+| `SERVER` | variable, optional | A server of your own, e.g. `https://ntfy.example.com`. Defaults to `https://ntfy.sh` |
+| `TOKEN` | secret, optional | An access token (`tk_...`) for a server or topic that requires one |
+
+- ntfy.sh needs no account. It limits each publisher, by IP address unless a token names an account,
+  and a Worker shares its addresses with others; a token, or a server of your own, avoids that.
+- A message over 4,096 bytes arrives as an attachment, or is refused where the server keeps none.
+- `key` reaches ntfy as a digest, so a key of any length works. Replacing needs ntfy server 2.16 or
+  later.
+- iOS gets instant notifications through ntfy.sh's push relay, also for a server of your own, which then
+  passes ntfy.sh only the message's ID.
+- A refused publish fails as e.g. `HTTP 403`, without the server's text.
+
 ## Platforms
 
 The relay is the same on every platform: the same endpoints, settings and channels.
@@ -436,7 +460,8 @@ base image, whose Runtime Interface Emulator invokes it as Lambda would. `test/a
 [dist/azure]` runs the Azure package in Microsoft's Functions host image for Node 24, with bodies sent
 with a length and chunked, and one past the host's limit.
 
-`npm run test:live` sends through real channels instead: a Loki push that it then reads back, mail to one
+`npm run test:live` sends through real channels instead: a Loki push that it then reads back, an ntfy
+message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID, mail to one
 SMTP server, plain text over 587 and HTML over 465, and HTML mail through the Gmail API. Mail passes once
 it shows up in the recipients' mailbox, among the newest mail read over IMAP on 993, so `LIVE_SMTP_TO`
 and `LIVE_GMAIL_TO` must both deliver there. That mailbox may be the sender's own: folders that may hold
@@ -455,14 +480,16 @@ under test is a container of it, given the same settings, instead of the Worker.
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
 
 To test a deployment instead, set `LIVE_RELAY_URL` to its URL and `LIVE_RELAY_TOKEN` to a token of its
-own; `LIVE_TARGET` names it in the messages, its host by default. The deployment needs the same settings,
-with that token as `TOKEN_LIVE`. `node test/live/settings.ts` prints them from the `LIVE_*` variables in
-the form a platform takes: `env` for `relay.env`, `json` for Azure's `settings.json` or
-`wrangler secret bulk`, and `lambda` for `env.json`:
+own, and `LIVE_NTFY_TOPIC` to an unguessable topic for its ntfy channel; `LIVE_TARGET` names it in the
+messages, its host by default. The deployment needs the same settings, with that token as `TOKEN_LIVE`.
+`node test/live/settings.ts` prints them from the `LIVE_*` variables in the form a platform takes: `env`
+for `relay.env`, `json` for Azure's `settings.json` or `wrangler secret bulk`, and `lambda` for
+`env.json`:
 
 ```bash
-LIVE_RELAY_TOKEN=nr_... node test/live/settings.ts lambda > env.json
-LIVE_RELAY_URL=https://... LIVE_RELAY_TOKEN=nr_... LIVE_TARGET=Lambda npm run test:live
+export LIVE_RELAY_TOKEN=nr_... LIVE_NTFY_TOPIC=notify-relay-live-$(openssl rand -hex 16)
+node test/live/settings.ts lambda > env.json
+LIVE_RELAY_URL=https://... LIVE_TARGET=Lambda npm run test:live
 ```
 
 The file holds every secret the live test has; delete it, and the deployment, when done.
