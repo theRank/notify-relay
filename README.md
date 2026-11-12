@@ -392,13 +392,27 @@ SMTP server, plain text over 587 and HTML over 465, and HTML mail through the Gm
 it shows up in the recipients' mailbox, among the newest mail read over IMAP on 993, so `LIVE_SMTP_TO`
 and `LIVE_GMAIL_TO` must both deliver there. That mailbox may be the sender's own: folders that may hold
 the sender's copy (sent, drafts, trash, and virtual ones such as all mail) are skipped. Landing in junk
-still passes, with a warning. Each body links the commit and the run. It needs `LIVE_LOKI_URL`,
+still passes, with a warning. It also checks that the relay refuses a request without a token and a body
+over 64 KB, and takes one sent chunked. Each body links the commit and the run. It needs `LIVE_LOKI_URL`,
 `LIVE_LOKI_USER` and `LIVE_LOKI_TOKEN` (`logs:write` and `logs:read`); `LIVE_SMTP_HOST`,
 `LIVE_SMTP_USER`, `LIVE_SMTP_PASSWORD`, `LIVE_SMTP_FROM` and `LIVE_SMTP_TO`; `LIVE_GMAIL_CLIENT_ID`,
 `LIVE_GMAIL_CLIENT_SECRET`, `LIVE_GMAIL_REFRESH_TOKEN`, `LIVE_GMAIL_FROM` and `LIVE_GMAIL_TO`; and
 `LIVE_IMAP_HOST`, `LIVE_IMAP_USER` and `LIVE_IMAP_PASSWORD`. With `LIVE_IMAGE` naming an image, the relay
 under test is a container of it, given the same settings, instead of the Worker. The
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
+
+To test a deployment instead, set `LIVE_RELAY_URL` to its URL and `LIVE_RELAY_TOKEN` to a token of its
+own; `LIVE_TARGET` names it in the messages, its host by default. The deployment needs the same settings,
+with that token as `TOKEN_LIVE`. `node test/live/settings.ts` prints them from the `LIVE_*` variables in
+the form a platform takes: `env` for `relay.env`, `json` for Azure's `settings.json` or
+`wrangler secret bulk`, and `lambda` for `env.json`:
+
+```bash
+LIVE_RELAY_TOKEN=nr_... node test/live/settings.ts lambda > env.json
+LIVE_RELAY_URL=https://... LIVE_RELAY_TOKEN=nr_... LIVE_TARGET=Lambda npm run test:live
+```
+
+The file holds every secret the live test has; delete it, and the deployment, when done.
 
 ### Adding an adapter
 
