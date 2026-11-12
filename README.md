@@ -18,7 +18,7 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark
 ```
 
 ## API
@@ -224,6 +224,27 @@ The token stays valid until the grant is revoked, the account's password changes
 six months. A dead token fails delivery with `refresh token revoked or expired (invalid_grant)`;
 `/healthz` cannot see it, since the parameters are still set.
 
+### `bark`
+
+Pushes to an iPhone or iPad through [Bark](https://github.com/Finb/Bark). `title` is the notification's
+title, `text` its body, and `rich`, when given, Markdown that Bark shows instead of the body. `level` is
+how it interrupts: `low` is passive (no sound, screen stays off), `normal` active, `high`
+time-sensitive (breaks through a Focus), and `critical` a critical alert, which rings even in silent mode
+once the app has that permission. `url` opens on tap, `group` gathers notifications, which Bark can mute
+by group, and a message with the same `key` replaces the notification.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `KEY` | secret | The device key Bark's app shows. Whoever has it can push to the device |
+| `SERVER` | variable, optional | A Bark server of your own, e.g. `https://bark.example.com`. Defaults to `https://api.day.app` |
+
+- A channel pushes to one device. To reach several, configure a channel for each and name them all in
+  `channels`.
+- Bark's server and Apple's push service see each notification as sent.
+- `key` reaches Bark as a digest, so a key of any length works. Replacing needs Bark 1.5.2 and
+  bark-server 2.2.5 or later.
+- A refused push fails as e.g. `HTTP 400`, without the server's text, which can name the key.
+
 ## Platforms
 
 The relay is the same on every platform: the same endpoints, settings and channels.
@@ -416,7 +437,9 @@ over 64 KB, and takes one sent chunked. Each body links the commit and the run. 
 `LIVE_LOKI_USER` and `LIVE_LOKI_TOKEN` (`logs:write` and `logs:read`); `LIVE_SMTP_HOST`,
 `LIVE_SMTP_USER`, `LIVE_SMTP_PASSWORD`, `LIVE_SMTP_FROM` and `LIVE_SMTP_TO`; `LIVE_GMAIL_CLIENT_ID`,
 `LIVE_GMAIL_CLIENT_SECRET`, `LIVE_GMAIL_REFRESH_TOKEN`, `LIVE_GMAIL_FROM` and `LIVE_GMAIL_TO`; and
-`LIVE_IMAP_HOST`, `LIVE_IMAP_USER` and `LIVE_IMAP_PASSWORD`. With `LIVE_IMAGE` naming an image, the relay
+`LIVE_IMAP_HOST`, `LIVE_IMAP_USER` and `LIVE_IMAP_PASSWORD`. With `LIVE_BARK_KEY` set, it also pushes
+through Bark to that device, in a group of its own; nothing reads the push back, so the test passes once
+Bark's server accepts it, and the phone shows the rest. With `LIVE_IMAGE` naming an image, the relay
 under test is a container of it, given the same settings, instead of the Worker. The
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
 
