@@ -18,7 +18,8 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord, feishu, webhook
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord, feishu,
+                                           telegram, webhook
 ```
 
 ## API
@@ -352,6 +353,51 @@ red. `key` and `group` are not used.
 - A bot takes 100 posts a minute and 5 a second, and the whole post may be 20 KB. Code `11232`, Feishu
   being busy, is retried once after a second.
 
+### `telegram`
+
+Sends to a Telegram chat through a [bot](https://core.telegram.org/bots): a person who has started the
+bot, a group it is in or a channel it administers. `title` is in bold, linked to `url` when one is
+given, and `text` below it, as a message every client shows. With `rich`, the message goes instead as a
+[rich message](https://core.telegram.org/bots/api#rich-message-formatting-options), whose Markdown
+renders headings, lists and tables, below the title; `text` is then not sent. A `low` message goes
+silently, notifying without a sound; Telegram has nothing else `level`, `key` or `group` could map to.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `TOKEN` | secret | The bot's token from [@BotFather](https://t.me/BotFather), `123456789:AA...`. Whoever has it can act as the bot |
+| `CHAT` | variable | The chat's ID: a person's, positive; a group's, negative; a supergroup's or channel's, `-100...`. Or a public channel's `@name` |
+| `THREAD` | variable, optional | A topic's ID, in a group with topics, to send there instead of *General* |
+| `SERVER` | variable, optional | The Bot API server, `https://api.telegram.org` by default: a proxy of your own where that is blocked, or a [server of your own](https://github.com/tdlib/telegram-bot-api) |
+
+A bot cannot write first: the person presses *Start* in its chat, or the bot is added to the group or
+made an admin of the channel. Telegram then has an update naming the chat:
+
+```bash
+curl -s "https://api.telegram.org/bot$TOKEN/getUpdates" | grep -o '"chat":{"id":-*[0-9]*'
+```
+
+- `rich` is Telegram's Markdown for rich messages: GitHub's, tables included, with HTML. It also takes
+  `$...$` as a formula, `==...==` as a highlight and `||...||` as a spoiler. A formula ends at a `$` that
+  follows anything but a space, so `$5-$10` makes one, and it drops what it cannot typeset:
+  `$5 到 $10，$400` shows as `510400`. Write each `$` as `\$`. An HTML tag Telegram does not know is
+  dropped and its text kept, so `Vec<String>` shows as `Vec`. Markdown that does not parse shows as
+  written, rather than failing.
+- Rich messages came with Bot API 10.1 in June 2026, and a client older than that may show one as
+  unsupported. A notification shows one as plain text, as it does any message.
+- Telegram links URLs, `@names`, `#hashtags`, `$TICKERS` and `/commands` by itself. Link previews are
+  off.
+- A message without `rich` takes 4,096 characters, and is refused over that as
+  `HTTP 400 (message is too long)`. A rich message takes 32,768, but Telegram cuts one over about 35,000
+  bytes without saying so: some 11,000 Chinese characters.
+- Telegram takes about a message a second per chat and 20 a minute per group. A 429 is retried as for
+  every channel.
+- `api.telegram.org` is blocked in some countries, mainland China among them. A proxy in `SERVER` sees
+  the token and every message.
+- A refused message fails as e.g. `HTTP 400 (chat not found)` or `HTTP 403 (bot was blocked by the
+  user)`, with Telegram's reason, which names what went wrong and never the message; a wrong `TOKEN` as
+  `HTTP 401 (Unauthorized)`. A group that became a supergroup has a new ID, and the old one fails. A
+  `THREAD` that is not a topic ID or a `SERVER` that is not an http(s) URL fails without sending.
+
 ### `webhook`
 
 Posts the message as JSON to a receiver of your own, such as n8n, Home Assistant or a script. The body
@@ -596,9 +642,11 @@ Bark's server accepts it, and the phone shows the rest. With `LIVE_BARK_ENCRYPTI
 phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_SLACK_URL`, it posts mrkdwn and a
 link to that webhook's channel, with `LIVE_DISCORD_URL` an embed with Markdown, and with
 `LIVE_FEISHU_URL` a card with Markdown to that bot's group, signed with `LIVE_FEISHU_SECRET` when the
-bot verifies signatures; likewise, only the channel shows the result. With `LIVE_IMAGE` naming an image,
-the relay under test is a container of it, given the same settings, instead of the Worker. The
-[Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
+bot verifies signatures; with `LIVE_TELEGRAM_TOKEN` and `LIVE_TELEGRAM_CHAT`, it sends that chat a
+message and, silently, a rich message with a table; likewise, only the channel shows the result. With
+`LIVE_IMAGE` naming an image, the relay under test is a container of it, given the same settings,
+instead of the Worker. The [Live](.github/workflows/live.yml) workflow runs it both ways on `main`,
+weekly and by hand.
 
 To test a deployment instead, set `LIVE_RELAY_URL` to its URL and `LIVE_RELAY_TOKEN` to a token of its
 own, and `LIVE_NTFY_TOPIC` to an unguessable topic for its ntfy channel; `LIVE_TARGET` names it in the
