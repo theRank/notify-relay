@@ -17,7 +17,7 @@ function capture(response: Response) {
     return { requests, ctx: { fetch, connect, now: () => 1_760_000_000_000, signal: new AbortController().signal, channel: 'ops' } }
 }
 
-const ok = () => new Response(null, { status: 204 })
+const ok = () => Response.json({ id: '789', channel_id: '123' })
 
 describe('discord', () => {
     it('declares the parameters a channel of this type needs', () => {
@@ -37,18 +37,20 @@ describe('discord', () => {
         expect(requests).toHaveLength(1)
         const request = requests[0]!
         expect(request.method).toBe('POST')
-        expect(request.url).toBe(params.URL)
+        expect(request.url).toBe(`${params.URL}?wait=true`)
         expect(request.headers.get('content-type')).toBe('application/json')
         expect(await request.json()).toEqual({
             embeds: [{ title: 'deploy done', description: 'all green\nin 3 minutes', url: 'https://example.com/run', color: 0x3498db }],
         })
     })
 
-    it('posts to the webhook URL as given, so a thread_id in it picks the thread', async () => {
+    it.each([
+        ['keeps a thread_id in the webhook URL, which picks the thread', '?thread_id=456', '?thread_id=456&wait=true'],
+        ['waits for the message to be saved even when the URL says not to', '?wait=false', '?wait=true'],
+    ])('%s', async (_, query, expected) => {
         const { requests, ctx } = capture(ok())
-        const URL = `${params.URL}?thread_id=456`
-        await discord.send({ source: 'github', title: 'x', level: 'normal' }, { URL }, ctx)
-        expect(requests[0]!.url).toBe(URL)
+        await discord.send({ source: 'github', title: 'x', level: 'normal' }, { URL: `${params.URL}${query}` }, ctx)
+        expect(requests[0]!.url).toBe(`${params.URL}${expected}`)
     })
 
     it('shows rich as Discord Markdown in place of the text, as written', async () => {

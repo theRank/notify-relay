@@ -311,6 +311,8 @@ desktop notification. `key` and `group` are not used.
 |---|---|---|
 | `URL` | secret | The webhook URL, `https://discord.com/api/webhooks/...`. Whoever has it can post to the channel. With `?thread_id=...` appended, it posts into that thread |
 
+- The relay sets `wait=true` on the URL, so a post counts as delivered only once Discord has saved the
+  message; without it, Discord answers success even for one it dropped.
 - A mention in `rich`, such as `<@123>`, shows but notifies no one: Discord never notifies of mentions in
   an embed.
 - Discord refuses a title over 256 characters and a description over 4,096; the escapes in the title

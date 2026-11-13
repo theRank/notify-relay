@@ -13,7 +13,10 @@ export const discord: Outbound = {
     async send(message, params, { fetch, signal }) {
         const { title, text, rich, level, url } = message
         const description = rich ?? (text && escape(text))
-        const response = await fetch(param(params, 'URL'), {
+        // Without wait, Discord answers 204 even for a message it did not save
+        const target = new URL(param(params, 'URL'))
+        target.searchParams.set('wait', 'true')
+        const response = await fetch(target, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
