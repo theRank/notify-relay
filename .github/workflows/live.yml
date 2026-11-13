@@ -3,11 +3,11 @@ name: Live
 # Sends through real channels and reads each back: Loki through its query API, ntfy through a fresh topic
 # on ntfy.sh, and mail, sent through one SMTP server on 587 and 465 and through the Gmail API, over IMAP.
 # Channels it cannot read back are tested when their secrets are set, and only their own end shows the
-# result: Bark, in the clear and, with LIVE_BARK_ENCRYPTION and its key, encrypted, Slack and Discord. It
-# runs once on the Workers runtime and once through the container image. Runs on main only, after
-# merges, weekly and by hand, so no unmerged code sees the secrets: a dispatch from another branch is
-# skipped, and the `live` environment holding them admits only main as well. Endpoints and addresses are
-# secrets too, so the public log masks them. Not a required check: a provider outage turns it red
+# result: Bark, in the clear and, with LIVE_BARK_ENCRYPTION and its key, encrypted, Slack, Discord and
+# Feishu. It runs once on the Workers runtime and once through the container image. Runs on main only,
+# after merges, weekly and by hand, so no unmerged code sees the secrets: a dispatch from another branch
+# is skipped, and the `live` environment holding them admits only main as well. Endpoints and addresses
+# are secrets too, so the public log masks them. Not a required check: a provider outage turns it red
 # without blocking a merge.
 
 on:
@@ -78,4 +78,6 @@ jobs:
           LIVE_BARK_ENCRYPTION_KEY: ${{ secrets.LIVE_BARK_ENCRYPTION_KEY }}
           LIVE_SLACK_URL: ${{ secrets.LIVE_SLACK_URL }}
           LIVE_DISCORD_URL: ${{ secrets.LIVE_DISCORD_URL }}
+          LIVE_FEISHU_URL: ${{ secrets.LIVE_FEISHU_URL }}
+          LIVE_FEISHU_SECRET: ${{ secrets.LIVE_FEISHU_SECRET }}
         run: npm run test:live
