@@ -18,7 +18,7 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord, feishu
 ```
 
 ## API
@@ -325,6 +325,31 @@ desktop notification. `key` and `group` are not used.
   so remove a channel whose webhook is gone.
 - A refused post fails as e.g. `HTTP 400`, without Discord's text.
 
+### `feishu`
+
+Posts a card to a [Feishu](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot) or Lark
+group through a custom bot, always the group it was added to. `title` is the card's header, and the
+preview the chat list shows; `text` a plain-text block, which `rich`, when given, replaces; `url` the link
+the card opens when tapped. `rich` is the card's own
+[Markdown](https://open.feishu.cn/document/feishu-cards/card-json-v2-components/content-components/rich-text),
+passed on as written, so a mention such as `<at id=all></at>` in it notifies; Feishu refuses a post
+mentioning all where the group does not allow it. `level` colours the header grey, blue, orange or
+red. `key` and `group` are not used.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `URL` | secret | The bot's webhook URL, `https://open.feishu.cn/open-apis/bot/v2/hook/...`, or `https://open.larksuite.com/...` for Lark. Whoever has it can post to the group |
+| `SECRET` | secret, optional | The bot's signing secret, when it has *signature verification* on. Each post is signed with the time, which must be within an hour of Feishu's |
+
+- Feishu answers 200 for a refused post, with the reason in a code, so a failure reads e.g. `code 19024`:
+  `19021` a wrong signature or clock, `19022` an address outside the bot's IP allowlist, `19024` no
+  configured keyword in the message, `9499` a malformed post. With *custom keywords* on, the sender must
+  put one in the title, `text` or `rich`. An IP allowlist cannot name a Worker, whose addresses are shared
+  and change.
+- The card needs Feishu 7.20 or later; older clients show only the header.
+- A bot takes 100 posts a minute and 5 a second, and the whole post may be 20 KB. Code `11232`, Feishu
+  being busy, is retried once after a second.
+
 ## Platforms
 
 The relay is the same on every platform: the same endpoints, settings and channels.
@@ -523,9 +548,10 @@ through Bark to that device, in a group of its own; nothing reads the push back,
 Bark's server accepts it, and the phone shows the rest. With `LIVE_BARK_ENCRYPTION` and
 `LIVE_BARK_ENCRYPTION_KEY` too, as set in the app, a second push goes encrypted, as `bark-sealed`; the
 phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_SLACK_URL`, it posts mrkdwn and a
-link to that webhook's channel, and with `LIVE_DISCORD_URL` an embed with Markdown, which, likewise,
-only the channel shows. With `LIVE_IMAGE` naming an
-image, the relay under test is a container of it, given the same settings, instead of the Worker. The
+link to that webhook's channel, with `LIVE_DISCORD_URL` an embed with Markdown, and with
+`LIVE_FEISHU_URL` a card with Markdown to that bot's group, signed with `LIVE_FEISHU_SECRET` when the
+bot verifies signatures; likewise, only the channel shows the result. With `LIVE_IMAGE` naming an image,
+the relay under test is a container of it, given the same settings, instead of the Worker. The
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
 
 To test a deployment instead, set `LIVE_RELAY_URL` to its URL and `LIVE_RELAY_TOKEN` to a token of its
