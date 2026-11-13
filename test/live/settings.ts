@@ -82,6 +82,11 @@ export function relaySettings(live: Live, token: string, topic: string): Record<
         }),
         CHANNEL_NTFY_TYPE: 'ntfy',
         CHANNEL_NTFY_TOPIC: topic,
+        // ntfy keeps a body posted to a topic as the message, which makes the topic a receiver that can be
+        // read back. It ignores the signature, so signing is only seen not to fail
+        CHANNEL_WEBHOOK_TYPE: 'webhook',
+        CHANNEL_WEBHOOK_URL: `https://ntfy.sh/${topic}`,
+        CHANNEL_WEBHOOK_SECRET: `whsec_${btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))}`,
         // The same device again, end-to-end encrypted as its app is set to decrypt
         ...(live.LIVE_BARK_KEY &&
             live.LIVE_BARK_ENCRYPTION &&

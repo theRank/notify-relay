@@ -18,7 +18,7 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord, feishu
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord, feishu, webhook
 ```
 
 ## API
@@ -352,6 +352,49 @@ red. `key` and `group` are not used.
 - A bot takes 100 posts a minute and 5 a second, and the whole post may be 20 KB. Code `11232`, Feishu
   being busy, is retried once after a second.
 
+### `webhook`
+
+Posts the message as JSON to a receiver of your own, such as n8n, Home Assistant or a script. The body
+is the message as the sender gave it, with the sender's `source` added and `to` left out, as it names the
+recipients of other channels; a field the sender left out is absent:
+
+```json
+{"source": "github", "title": "deploy done", "text": "all green", "level": "high", "key": "deploy-1"}
+```
+
+`rich` is passed on as written, in whatever markup the receiver expects.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `URL` | secret | Where to post: `https://`, or `http://` on a network of your own. Whoever has a URL that holds a token can post to it |
+| `SECRET` | secret, optional | Signs each post as [Standard Webhooks](https://www.standardwebhooks.com) does: `whsec_` and at least 24 random bytes in base64 |
+| `TOKEN` | secret, optional | Sent as `Authorization: Bearer <TOKEN>`, for a receiver that checks only a header |
+
+```bash
+printf 'whsec_%s\n' "$(openssl rand -base64 32)"
+```
+
+A signed post carries `webhook-id`, `webhook-timestamp` (seconds) and `webhook-signature`: `v1,` and the
+base64 HMAC-SHA256 of `<id>.<timestamp>.<body>`. The Standard Webhooks libraries check all three, and
+refuse a timestamp more than five minutes off, e.g. in JavaScript:
+
+```js
+import { Webhook } from 'standardwebhooks'
+
+new Webhook(secret).verify(body, headers) // throws unless the post is genuine; body exactly as received
+```
+
+- Any 2xx counts as delivered. A redirect fails as e.g. `HTTP 301` instead of being followed: following
+  a 301 or 302 turns the POST into a GET without the body, which the page it lands on may well answer
+  with 200. Point `URL` at where the redirect leads.
+- The receiver has the 5 seconds every channel has, so answer first and do the work after.
+- Each post gets an ID of its own, also when the relay retries after a 429 or the sender after a 502, so
+  the ID does not tell a repeat; `key` does, when the sender sets one.
+- The body grows with the message format (see [Contract](#contract)), so ignore fields you do not know.
+- Over `http://`, the message and the token cross in the clear.
+- A refused post fails as e.g. `HTTP 400`, without the receiver's text. A `SECRET` that is not base64 or
+  shorter than 24 bytes fails every post, without posting.
+
 ## Platforms
 
 The relay is the same on every platform: the same endpoints, settings and channels.
@@ -535,7 +578,8 @@ base image, whose Runtime Interface Emulator invokes it as Lambda would. `test/a
 with a length and chunked, and one past the host's limit.
 
 `npm run test:live` sends through real channels instead: a Loki push that it then reads back, an ntfy
-message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID, mail to one
+message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID, a signed
+webhook post to the same topic, which ntfy keeps as the message, read back as the JSON sent, mail to one
 SMTP server, plain text over 587 and HTML over 465, and HTML mail through the Gmail API. Mail passes once
 it shows up in the recipients' mailbox, among the newest mail read over IMAP on 993, so `LIVE_SMTP_TO`
 and `LIVE_GMAIL_TO` must both deliver there. That mailbox may be the sender's own: folders that may hold

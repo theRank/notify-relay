@@ -1,7 +1,8 @@
 name: Live
 
-# Sends through real channels and reads each back: Loki through its query API, ntfy through a fresh topic
-# on ntfy.sh, and mail, sent through one SMTP server on 587 and 465 and through the Gmail API, over IMAP.
+# Sends through real channels and reads each back: Loki through its query API, ntfy and a webhook posting
+# to it through a fresh topic on ntfy.sh, and mail, sent through one SMTP server on 587 and 465 and
+# through the Gmail API, over IMAP.
 # Channels it cannot read back are tested when their secrets are set, and only their own end shows the
 # result: Bark, in the clear and, with LIVE_BARK_ENCRYPTION and its key, encrypted, Slack, Discord and
 # Feishu. It runs once on the Workers runtime and once through the container image. Runs on main only,
