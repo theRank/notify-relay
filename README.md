@@ -18,7 +18,7 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack
 ```
 
 ## API
@@ -48,7 +48,7 @@ names are the deployment's own (see [Channels](#channels)), not channel types.
 |---|---|---|
 | `title` | yes | One line |
 | `text` | no | Plain text |
-| `rich` | no | Formatted text in the channel's own markup: HTML for `smtp` and `gmail`, Markdown where a channel renders it |
+| `rich` | no | Formatted text in the channel's own markup: HTML for `smtp` and `gmail`, mrkdwn for `slack`, Markdown where a channel renders it |
 | `level` | no | `low`, `normal` (default), `high` or `critical`. How loudly each channel notifies, never which channels |
 | `url` | no | A link back to the source; https only |
 | `key` | no | On channels that support it, a new message with the same key replaces the previous one |
@@ -278,6 +278,24 @@ the notification. `group` is not used.
   passes ntfy.sh only the message's ID.
 - A refused publish fails as e.g. `HTTP 403`, without the server's text.
 
+### `slack`
+
+Posts to a Slack channel through an
+[incoming webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks), always the
+channel it was created for. `title` is a header, and the text the notification shows; `text` a
+plain-text section, which `rich`, when given, replaces; `url` a link below them. `rich` is Slack's own
+[mrkdwn](https://docs.slack.dev/messaging/formatting-message-text), not Markdown, passed on as written,
+so a mention such as `<!channel>` in it notifies. Slack has nothing `level`, `key` or `group` could map
+to.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `URL` | secret | The webhook URL, `https://hooks.slack.com/services/...`. Whoever has it can post to the channel |
+
+- Slack refuses a header over 150 characters, and `text` or `rich` over 3,000.
+- Slack takes about one post a second per webhook. A 429 is retried as for every channel.
+- A refused post fails as e.g. `HTTP 400`, without Slack's text.
+
 ## Platforms
 
 The relay is the same on every platform: the same endpoints, settings and channels.
@@ -475,8 +493,9 @@ over 64 KB, and takes one sent chunked. Each body links the commit and the run. 
 through Bark to that device, in a group of its own; nothing reads the push back, so the test passes once
 Bark's server accepts it, and the phone shows the rest. With `LIVE_BARK_ENCRYPTION` and
 `LIVE_BARK_ENCRYPTION_KEY` too, as set in the app, a second push goes encrypted, as `bark-sealed`; the
-phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_IMAGE` naming an image, the relay
-under test is a container of it, given the same settings, instead of the Worker. The
+phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_SLACK_URL`, it posts mrkdwn and a
+link to that webhook's channel, which, likewise, only the channel shows. With `LIVE_IMAGE` naming an
+image, the relay under test is a container of it, given the same settings, instead of the Worker. The
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
 
 To test a deployment instead, set `LIVE_RELAY_URL` to its URL and `LIVE_RELAY_TOKEN` to a token of its
