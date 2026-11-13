@@ -7,8 +7,9 @@ import { loki } from './loki'
 import { ntfy } from './ntfy'
 import { slack } from './slack'
 import { smtp } from './smtp'
+import { telegram } from './telegram'
 import { webhook } from './webhook'
 
 export const adapters: Record<string, Outbound> = Object.fromEntries(
-    [loki, gmail, smtp, bark, ntfy, slack, discord, feishu, webhook].map((adapter) => [adapter.type, adapter]),
+    [loki, gmail, smtp, bark, ntfy, slack, discord, feishu, telegram, webhook].map((adapter) => [adapter.type, adapter]),
 )
