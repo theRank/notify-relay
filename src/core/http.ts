@@ -15,7 +15,7 @@ export async function expectOk(response: Response): Promise<void> {
     throw new Error(`HTTP ${response.status}`)
 }
 
-function retryAfterMs(value: string | null): number {
+export function retryAfterMs(value: string | null): number {
     if (value === null || value.trim() === '') return Infinity
     const seconds = Number(value)
     return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Infinity

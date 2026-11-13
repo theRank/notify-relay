@@ -182,6 +182,25 @@ describe('live', () => {
         expect(await send('feishu', false, { rich, level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
+    // Nothing reads the message back; the chat shows it: the title in bold, linked, then the text. It goes
+    // as a classic message, as one without rich does
+    it.skipIf(!vars.CHANNEL_TELEGRAM_TYPE)('sends to Telegram, as a classic message', async () => {
+        const outcome = { messages: [{ delivered: ['telegram'], failed: [] }] }
+        expect(await send('telegram', false, { level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
+    })
+
+    // Nothing reads the message back; the chat shows it: the title in bold, then the Markdown and its table.
+    // Low, so it arrives silently
+    it.skipIf(!vars.CHANNEL_TELEGRAM_TYPE)('sends to Telegram, as a rich message with Markdown', async () => {
+        const rich = [
+            `Sent through **telegram** on ${vars.LIVE_TARGET} by the live test, as a _rich message_.`,
+            '| Commit | Run |\n|---|---|',
+            `| [${vars.LIVE_COMMIT}](${vars.LIVE_COMMIT_URL}) | [run](${vars.LIVE_RUN_URL}) |`,
+        ].join('\n\n')
+        const outcome = { messages: [{ delivered: ['telegram'], failed: [] }] }
+        expect(await send('telegram', false, { rich, level: 'low' })).toEqual(outcome)
+    })
+
     // Only the phone can tell whether it decrypted: it shows "Decryption Failed" otherwise
     it.skipIf(!vars.CHANNEL_BARK_SEALED_TYPE)('pushes through Bark, end-to-end encrypted', async () => {
         const outcome = { messages: [{ delivered: ['bark-sealed'], failed: [] }] }
