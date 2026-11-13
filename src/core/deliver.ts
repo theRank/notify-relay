@@ -92,7 +92,7 @@ async function attempt(message: Message, name: string, deps: Deps): Promise<stri
                 await deps.sleep(error.retryAfterMs)
                 continue
             }
-            return reason(error)
+            return redact(reason(error), params)
         }
     }
 }
@@ -120,4 +120,21 @@ function reason(error: unknown): string {
     if (error instanceof DOMException && error.name === 'TimeoutError') return 'timeout'
     if (error instanceof Error) return error.message
     return 'failed'
+}
+
+// The outcome goes to the sender, and an error may quote a channel's setting: fetch names a URL it cannot
+// use whole, token and all. A shorter value is too likely to turn up by chance, as a port in a status
+const MIN_REDACTED = 8
+
+function redact(text: string, params: Record<string, string>): string {
+    const forms = Object.values(params)
+        .filter((value) => value.length >= MIN_REDACTED)
+        .flatMap((value) => [value, encodeURIComponent(value), ...(URL.canParse(value) ? [new URL(value).href] : [])])
+    if (forms.length === 0) return text
+    // Longest first, so a setting within another goes with it, in one pass, so nothing is redacted twice
+    const pattern = [...new Set(forms)]
+        .sort((a, b) => b.length - a.length)
+        .map((form) => form.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&'))
+        .join('|')
+    return text.replace(new RegExp(pattern, 'g'), '<redacted>')
 }

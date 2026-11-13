@@ -93,6 +93,9 @@ Any sender token can reach whoever `ALLOW_TO` admits, so keep it narrow.
 {"messages": [{"delivered": ["loki"], "failed": [{"channel": "bark", "error": "timeout"}]}]}
 ```
 
+An error that would quote one of the channel's settings, as fetch quotes a URL it cannot use, token and
+all, has `<redacted>` in its place. Settings under 8 characters, such as a port, are left as they are.
+
 A 400 body is `{"error": "<reason>"}`. A 401 has no body, only `WWW-Authenticate: Bearer`. Delivery is
 at-least-once: an occasional duplicate is preferred to a silent loss, and `key` lets channels collapse
 duplicates.
@@ -671,9 +674,10 @@ The file holds every secret the live test has; delete it, and the deployment, wh
 - Outbound: implement `Outbound` (`type`, `params`, `send(message, params, ctx)`) and register it in
   `src/outbound/index.ts`. `send` gets the channel's own parameters, never the environment; `params` is
   what a channel of the type must configure and what `/healthz` checks; `optional` lists the ones it may
-  configure, passed when set and never checked. A type that takes recipients implements
-  `recipients(value, params)`, returning why it refuses an entry of `to`, and reads its own entry as
-  `message.to?.[ctx.channel]`. `TYPE` is reserved.
+  configure, passed when set and never checked. A thrown error's message reaches the sender, with the
+  channel's settings redacted, so keep anything else private, such as a server's text, out of it. A type
+  that takes recipients implements `recipients(value, params)`, returning why it refuses an entry of
+  `to`, and reads its own entry as `message.to?.[ctx.channel]`. `TYPE` is reserved.
 - Platform: add an entry under `src/platforms` that turns the platform's request into a `Request` and
   calls `handle(request, env, deps)`, with the platform's settings as `env`, and `fetch`, `connect`, `now`
   and `sleep` in `deps`. `connect` provides `Connection` from `src/core/deliver.ts`, the part of
