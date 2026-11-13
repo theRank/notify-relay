@@ -301,8 +301,8 @@ to.
 Posts an embed to a Discord channel through a
 [webhook](https://discord.com/developers/docs/resources/webhook#execute-webhook), always the channel it
 was created for. `title` is the embed's title, linked to `url` when one is given, and `text` its
-description, which `rich`, when given, replaces. Discord renders Markdown in both, so the title and
-`text` are escaped to show as written; `rich` is
+description, which `rich`, when given, replaces. Discord renders Markdown in both, so whatever in the
+title and `text` it would render as markup gets a backslash, to show as written; `rich` is
 [Discord's Markdown](https://support.discord.com/hc/articles/210298617), passed on as written. `level`
 colours the embed grey, blue, orange or red, and a `low` message goes silently, without a push or
 desktop notification. `key` and `group` are not used.
@@ -313,6 +313,8 @@ desktop notification. `key` and `group` are not used.
 
 - The relay sets `wait=true` on the URL, so a post counts as delivered only once Discord has saved the
   message; without it, Discord answers success even for one it dropped.
+- A push notification shows the title and description raw: `rich` with its Markdown, and the title and
+  `text` with their backslashes, which is why only actual markup gets one.
 - A mention in `rich`, such as `<@123>`, shows but notifies no one: Discord never notifies of mentions in
   an embed.
 - Discord refuses a title over 256 characters and a description over 4,096; the escapes in the title
