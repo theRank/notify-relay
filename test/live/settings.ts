@@ -21,9 +21,9 @@ const NAMES = [
     'LIVE_IMAP_PASSWORD',
 ] as const
 
-// Bark, Slack, Discord and Feishu deliver to a device or a workspace of one's own, which the test cannot
-// read back from: without its variable, the relay under test has no such channel and its test is
-// skipped. The ntfy topic has a default
+// Bark, Slack, Discord, Feishu and Telegram deliver to a device or a workspace of one's own, which the
+// test cannot read back from: without its variable, the relay under test has no such channel and its
+// test is skipped. The ntfy topic has a default
 const OPTIONAL = [
     'LIVE_BARK_KEY',
     'LIVE_BARK_ENCRYPTION',
@@ -33,6 +33,8 @@ const OPTIONAL = [
     'LIVE_DISCORD_URL',
     'LIVE_FEISHU_URL',
     'LIVE_FEISHU_SECRET',
+    'LIVE_TELEGRAM_TOKEN',
+    'LIVE_TELEGRAM_CHAT',
 ] as const
 
 export type Live = Record<(typeof NAMES)[number], string> & Partial<Record<(typeof OPTIONAL)[number], string>>
@@ -80,6 +82,12 @@ export function relaySettings(live: Live, token: string, topic: string): Record<
             CHANNEL_FEISHU_URL: live.LIVE_FEISHU_URL,
             ...(live.LIVE_FEISHU_SECRET && { CHANNEL_FEISHU_SECRET: live.LIVE_FEISHU_SECRET }),
         }),
+        ...(live.LIVE_TELEGRAM_TOKEN &&
+            live.LIVE_TELEGRAM_CHAT && {
+                CHANNEL_TELEGRAM_TYPE: 'telegram',
+                CHANNEL_TELEGRAM_TOKEN: live.LIVE_TELEGRAM_TOKEN,
+                CHANNEL_TELEGRAM_CHAT: live.LIVE_TELEGRAM_CHAT,
+            }),
         CHANNEL_NTFY_TYPE: 'ntfy',
         CHANNEL_NTFY_TOPIC: topic,
         // ntfy keeps a body posted to a topic as the message, which makes the topic a receiver that can be
