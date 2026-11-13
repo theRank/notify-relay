@@ -52,17 +52,25 @@ async function readBack(): Promise<boolean> {
 }
 
 // The topic's cached messages, as ntfy keeps them for subscribers that poll
-async function published(subject: string): Promise<Record<string, unknown> | undefined> {
+async function published(match: (message: Record<string, unknown>) => boolean): Promise<Record<string, unknown> | undefined> {
     const topic = new URL(`${vars.CHANNEL_NTFY_TOPIC}/json`, 'https://ntfy.sh/')
     topic.searchParams.set('poll', '1')
     for (const deadline = Date.now() + 30_000; Date.now() < deadline; await new Promise((resolve) => setTimeout(resolve, 2000))) {
         const response = await fetch(topic)
         expect(response.status).toBe(200)
         const lines = (await response.text()).split('\n').filter((line) => line !== '')
-        const found = lines.map((line) => JSON.parse(line) as Record<string, unknown>).find((message) => message.title === subject)
+        const found = lines.map((line) => JSON.parse(line) as Record<string, unknown>).find(match)
         if (found) return found
     }
     return undefined
+}
+
+function parsed(text: unknown): Record<string, unknown> | undefined {
+    try {
+        return JSON.parse(text as string) as Record<string, unknown>
+    } catch {
+        return undefined
+    }
 }
 
 async function received(channel: string): Promise<string[] | undefined> {
@@ -87,11 +95,25 @@ describe('live', () => {
         const key = `live-${run}`
         const rich = `Sent through **ntfy** on ${vars.LIVE_TARGET} by the live test, as Markdown.`
         expect(await send('ntfy', false, { rich, level: 'high', key })).toEqual({ messages: [{ delivered: ['ntfy'], failed: [] }] })
-        expect(await published(title('ntfy'))).toMatchObject({
+        expect(await published((message) => message.title === title('ntfy'))).toMatchObject({
             message: rich,
             content_type: 'text/markdown',
             priority: 4,
             sequence_id: await keyId(key),
+        })
+    }, 60_000)
+
+    // The webhook posts to the ntfy topic, which keeps the body as the message
+    it('posts the message as JSON to a webhook, where it can be read back as sent', async () => {
+        const key = `live-${run}`
+        expect(await send('webhook', false, { level: 'high', key })).toEqual({ messages: [{ delivered: ['webhook'], failed: [] }] })
+        const found = await published((message) => parsed(message.message)?.title === title('webhook'))
+        expect(parsed(found?.message)).toEqual({
+            source: 'live',
+            title: title('webhook'),
+            text: expect.stringContaining(vars.LIVE_RUN_URL!),
+            level: 'high',
+            key,
         })
     }, 60_000)
 

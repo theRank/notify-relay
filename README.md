@@ -578,7 +578,8 @@ base image, whose Runtime Interface Emulator invokes it as Lambda would. `test/a
 with a length and chunked, and one past the host's limit.
 
 `npm run test:live` sends through real channels instead: a Loki push that it then reads back, an ntfy
-message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID, mail to one
+message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID, a signed
+webhook post to the same topic, which ntfy keeps as the message, read back as the JSON sent, mail to one
 SMTP server, plain text over 587 and HTML over 465, and HTML mail through the Gmail API. Mail passes once
 it shows up in the recipients' mailbox, among the newest mail read over IMAP on 993, so `LIVE_SMTP_TO`
 and `LIVE_GMAIL_TO` must both deliver there. That mailbox may be the sender's own: folders that may hold
