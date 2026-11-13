@@ -1,6 +1,6 @@
 import { param } from '../core/channels'
 import type { Outbound } from '../core/deliver'
-import { expectOk, RateLimited } from '../core/http'
+import { expectOk, RateLimited, retryAfterMs } from '../core/http'
 
 const SERVER = 'https://api.telegram.org'
 const MAX_REASON = 100
@@ -37,17 +37,23 @@ export const telegram: Outbound = {
             signal,
         })
         const answer = (await response.json().catch(() => undefined)) as
-            | { ok?: unknown; description?: unknown; parameters?: { retry_after?: unknown } }
+            | { ok?: unknown; error_code?: unknown; description?: unknown; parameters?: { retry_after?: unknown } }
             | undefined
         if (response.ok && answer?.ok === true) return
-        if (response.ok) throw new Error('unexpected answer')
-        if (response.status === 429) {
-            // Telegram's own server sends Retry-After too, but a proxy may drop it
-            const seconds = answer?.parameters?.retry_after
-            if (typeof seconds === 'number' && seconds >= 0) throw new RateLimited(seconds * 1000)
-        } else if (typeof answer?.description === 'string') {
-            throw new Error(`HTTP ${response.status} (${reason(answer.description)})`)
+        // ok decides, as the Bot API has it. Telegram's own server also sets the status to error_code, and
+        // sends Retry-After with retry_after, but a proxy may answer 200 or drop the header
+        if (answer?.ok === false) {
+            const code = typeof answer.error_code === 'number' ? answer.error_code : response.status
+            if (code === 429) {
+                const seconds = answer.parameters?.retry_after
+                throw new RateLimited(
+                    typeof seconds === 'number' && seconds >= 0 ? seconds * 1000 : retryAfterMs(response.headers.get('retry-after')),
+                )
+            }
+            const why = typeof answer.description === 'string' ? ` (${reason(answer.description)})` : ''
+            throw new Error(`HTTP ${code}${why}`)
         }
+        if (response.ok) throw new Error('unexpected answer')
         await expectOk(response)
     },
 }

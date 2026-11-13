@@ -20,7 +20,8 @@ function capture(response: Response) {
 }
 
 const ok = () => Response.json({ ok: true, result: { message_id: 1, chat: { id: 987654321, type: 'private' }, date: 1760000000 } })
-const refused = (status: number, description: string) => Response.json({ ok: false, error_code: status, description }, { status })
+// Telegram's own server sets the status to error_code; a proxy may answer 200 instead
+const refused = (code: number, description: string, status = code) => Response.json({ ok: false, error_code: code, description }, { status })
 
 const failure = async (response: Response, extra: object = {}) => {
     const { requests, ctx } = capture(response)
@@ -167,8 +168,20 @@ describe('telegram', () => {
         [400, 'Bad Request: RICH_MESSAGE_TEXT_TOO_LONG', 'HTTP 400 (RICH_MESSAGE_TEXT_TOO_LONG)'],
         [403, 'Forbidden: bot was blocked by the user', 'HTTP 403 (bot was blocked by the user)'],
         [401, 'Unauthorized', 'HTTP 401 (Unauthorized)'],
-    ])('reports a refused message by status and Telegram’s reason: %i %s', async (status, description, expected) => {
-        const { error } = await failure(refused(status, description))
+    ])('reports a refused message by its code and Telegram’s reason: %i %s', async (code, description, expected) => {
+        for (const status of [code, 200]) {
+            const { error } = await failure(refused(code, description, status))
+            expect((error as Error).message).toBe(expected)
+        }
+    })
+
+    // ok decides, as the Bot API has it
+    it.each([
+        ['without error_code, by the status', { ok: false, description: 'Bad Request: chat not found' }, 400, 'HTTP 400 (chat not found)'],
+        ['without a reason, by its code', { ok: false, error_code: 403 }, 403, 'HTTP 403'],
+        ['without a reason, on 200, by its code', { ok: false, error_code: 403 }, 200, 'HTTP 403'],
+    ])('reports a refused message %s', async (_, answer, status, expected) => {
+        const { error } = await failure(Response.json(answer, { status }))
         expect((error as Error).message).toBe(expected)
     })
 
@@ -199,10 +212,12 @@ describe('telegram', () => {
         ['no delay at all, as one too long to wait for', {}, {}, Infinity],
         ['no delay at all, when retry_after is not a number of seconds', { retry_after: '1' }, {}, Infinity],
     ])('turns 429 into a rate limit with %s', async (_, parameters, headers, delay) => {
-        const answer = Response.json({ ok: false, error_code: 429, description: 'Too Many Requests', parameters }, { status: 429, headers })
-        const { error } = await failure(answer)
-        expect(error).toBeInstanceOf(RateLimited)
-        expect((error as RateLimited).retryAfterMs).toBe(delay)
+        for (const status of [429, 200]) {
+            const answer = Response.json({ ok: false, error_code: 429, description: 'Too Many Requests', parameters }, { status, headers })
+            const { error } = await failure(answer)
+            expect(error).toBeInstanceOf(RateLimited)
+            expect((error as RateLimited).retryAfterMs).toBe(delay)
+        }
     })
 
     // A SERVER that is not Telegram's, such as a misconfigured proxy, may answer 200 for anything
