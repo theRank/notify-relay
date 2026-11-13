@@ -151,6 +151,15 @@ describe('telegram', () => {
         expect(requests).toHaveLength(0)
     })
 
+    // fetch refuses a URL with credentials and names it whole, the proxy's password as well
+    it('fails without sending, or naming the token, when SERVER holds a user or password', async () => {
+        for (const SERVER of ['https://user:pass@tg.example.com', 'https://user@tg.example.com']) {
+            const { error, requests } = await failure(ok(), { SERVER })
+            expect((error as Error).message).toBe('SERVER must not hold a user or password')
+            expect(requests).toHaveLength(0)
+        }
+    })
+
     it.each([
         [400, 'Bad Request: chat not found', 'HTTP 400 (chat not found)'],
         [400, 'Bad Request: message thread not found', 'HTTP 400 (message thread not found)'],
@@ -181,6 +190,19 @@ describe('telegram', () => {
         const { error } = await failure(answer)
         expect(error).toBeInstanceOf(RateLimited)
         expect((error as RateLimited).retryAfterMs).toBe(2000)
+    })
+
+    // Telegram's own server sends both, but a proxy may drop the header
+    it.each([
+        ['the answer’s retry_after, without a Retry-After header', { retry_after: 1 }, {}, 1000],
+        ['Retry-After, without a retry_after', {}, { 'retry-after': '2' }, 2000],
+        ['no delay at all, as one too long to wait for', {}, {}, Infinity],
+        ['no delay at all, when retry_after is not a number of seconds', { retry_after: '1' }, {}, Infinity],
+    ])('turns 429 into a rate limit with %s', async (_, parameters, headers, delay) => {
+        const answer = Response.json({ ok: false, error_code: 429, description: 'Too Many Requests', parameters }, { status: 429, headers })
+        const { error } = await failure(answer)
+        expect(error).toBeInstanceOf(RateLimited)
+        expect((error as RateLimited).retryAfterMs).toBe(delay)
     })
 
     // A SERVER that is not Telegram's, such as a misconfigured proxy, may answer 200 for anything

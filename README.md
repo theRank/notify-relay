@@ -396,7 +396,8 @@ curl -s "https://api.telegram.org/bot$TOKEN/getUpdates" | grep -o '"chat":{"id":
 - A refused message fails as e.g. `HTTP 400 (chat not found)` or `HTTP 403 (bot was blocked by the
   user)`, with Telegram's reason, which names what went wrong and never the message; a wrong `TOKEN` as
   `HTTP 401 (Unauthorized)`. A group that became a supergroup has a new ID, and the old one fails. A
-  `THREAD` that is not a topic ID or a `SERVER` that is not an http(s) URL fails without sending.
+  `THREAD` that is not a topic ID, or a `SERVER` that is not an http(s) URL or holds a user or password,
+  fails without sending.
 
 ### `webhook`
 

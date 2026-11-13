@@ -1,6 +1,6 @@
 import { param } from '../core/channels'
 import type { Outbound } from '../core/deliver'
-import { expectOk } from '../core/http'
+import { expectOk, RateLimited } from '../core/http'
 
 const SERVER = 'https://api.telegram.org'
 const MAX_REASON = 100
@@ -36,10 +36,16 @@ export const telegram: Outbound = {
             }),
             signal,
         })
-        const answer = (await response.json().catch(() => undefined)) as { ok?: unknown; description?: unknown } | undefined
+        const answer = (await response.json().catch(() => undefined)) as
+            | { ok?: unknown; description?: unknown; parameters?: { retry_after?: unknown } }
+            | undefined
         if (response.ok && answer?.ok === true) return
         if (response.ok) throw new Error('unexpected answer')
-        if (response.status !== 429 && typeof answer?.description === 'string') {
+        if (response.status === 429) {
+            // Telegram's own server sends Retry-After too, but a proxy may drop it
+            const seconds = answer?.parameters?.retry_after
+            if (typeof seconds === 'number' && seconds >= 0) throw new RateLimited(seconds * 1000)
+        } else if (typeof answer?.description === 'string') {
             throw new Error(`HTTP ${response.status} (${reason(answer.description)})`)
         }
         await expectOk(response)
@@ -55,6 +61,7 @@ function endpoint(params: Record<string, string>, method: string): URL {
         throw new Error('SERVER must be an http(s) URL')
     }
     if (server.protocol !== 'https:' && server.protocol !== 'http:') throw new Error('SERVER must be an http(s) URL')
+    if (server.username !== '' || server.password !== '') throw new Error('SERVER must not hold a user or password')
     server.pathname = `${server.pathname.replace(/\/+$/, '')}/bot${param(params, 'TOKEN')}/${method}`
     return server
 }
