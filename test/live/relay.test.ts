@@ -137,11 +137,19 @@ describe('live', () => {
         expect(await send('bark', false, { group: 'notify-relay live test' })).toEqual({ messages: [{ delivered: ['bark'], failed: [] }] })
     })
 
-    // Nothing reads the post back; the channel shows the header, the Markdown and the link
+    // Nothing reads the post back; the channel shows the header, the mrkdwn and the link
     it.skipIf(!vars.CHANNEL_SLACK_TYPE)('posts to Slack, with mrkdwn and a link', async () => {
         const rich = `Sent through *slack* on ${vars.LIVE_TARGET} by the live test, as _mrkdwn_.`
         const outcome = { messages: [{ delivered: ['slack'], failed: [] }] }
         expect(await send('slack', false, { rich, url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
+    })
+
+    // Nothing reads the post back; the channel shows the embed: its title linked, the Markdown, and the
+    // orange of a high message
+    it.skipIf(!vars.CHANNEL_DISCORD_TYPE)('posts to Discord, as an embed with Markdown', async () => {
+        const rich = `Sent through **discord** on ${vars.LIVE_TARGET} by the live test, as _Markdown_.`
+        const outcome = { messages: [{ delivered: ['discord'], failed: [] }] }
+        expect(await send('discord', false, { rich, level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
     // Only the phone can tell whether it decrypted: it shows "Decryption Failed" otherwise

@@ -18,7 +18,7 @@ same request. There is no queue, no database and no history.
 
 ```text
 inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack
+/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord
 ```
 
 ## API
@@ -296,6 +296,35 @@ to.
 - Slack takes about one post a second per webhook. A 429 is retried as for every channel.
 - A refused post fails as e.g. `HTTP 400`, without Slack's text.
 
+### `discord`
+
+Posts an embed to a Discord channel through a
+[webhook](https://discord.com/developers/docs/resources/webhook#execute-webhook), always the channel it
+was created for. `title` is the embed's title, linked to `url` when one is given, and `text` its
+description, which `rich`, when given, replaces. Discord renders Markdown in both, so the title and
+`text` are escaped to show as written; `rich` is
+[Discord's Markdown](https://support.discord.com/hc/articles/210298617), passed on as written. `level`
+colours the embed grey, blue, orange or red, and a `low` message goes silently, without a push or
+desktop notification. `key` and `group` are not used.
+
+| Parameter | Keep as | Meaning |
+|---|---|---|
+| `URL` | secret | The webhook URL, `https://discord.com/api/webhooks/...`. Whoever has it can post to the channel. With `?thread_id=...` appended, it posts into that thread |
+
+- The relay sets `wait=true` on the URL, so a post counts as delivered only once Discord has saved the
+  message; without it, Discord answers success even for one it dropped.
+- A mention in `rich`, such as `<@123>`, shows but notifies no one: Discord never notifies of mentions in
+  an embed.
+- Discord refuses a title over 256 characters and a description over 4,096; the escapes in the title
+  and `text` count.
+- Members who turned off *Show embeds and preview website links* in their settings see the post empty.
+- A 429 is retried as for every channel. Discord also blocks, for a while, an IP address that makes too
+  many refused requests, and a Worker shares its addresses with others, so it may meet a 429 it did not
+  cause; the container on a host of its own avoids that.
+- A deleted webhook answers `HTTP 404`, and posting to it again and again gets the address blocked too,
+  so remove a channel whose webhook is gone.
+- A refused post fails as e.g. `HTTP 400`, without Discord's text.
+
 ## Platforms
 
 The relay is the same on every platform: the same endpoints, settings and channels.
@@ -494,7 +523,8 @@ through Bark to that device, in a group of its own; nothing reads the push back,
 Bark's server accepts it, and the phone shows the rest. With `LIVE_BARK_ENCRYPTION` and
 `LIVE_BARK_ENCRYPTION_KEY` too, as set in the app, a second push goes encrypted, as `bark-sealed`; the
 phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_SLACK_URL`, it posts mrkdwn and a
-link to that webhook's channel, which, likewise, only the channel shows. With `LIVE_IMAGE` naming an
+link to that webhook's channel, and with `LIVE_DISCORD_URL` an embed with Markdown, which, likewise,
+only the channel shows. With `LIVE_IMAGE` naming an
 image, the relay under test is a container of it, given the same settings, instead of the Worker. The
 [Live](.github/workflows/live.yml) workflow runs it both ways on `main`, weekly and by hand.
 
