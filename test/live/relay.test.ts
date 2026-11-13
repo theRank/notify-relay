@@ -152,6 +152,14 @@ describe('live', () => {
         expect(await send('discord', false, { rich, level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
+    // Nothing reads the post back; the group shows the card: its orange header, the Markdown, and the
+    // link it opens. A secret, when set, signs the post, and Feishu refuses one signed wrong
+    it.skipIf(!vars.CHANNEL_FEISHU_TYPE)('posts to Feishu, as a card with Markdown', async () => {
+        const rich = `Sent through **feishu** on ${vars.LIVE_TARGET} by the live test, as *Markdown*.`
+        const outcome = { messages: [{ delivered: ['feishu'], failed: [] }] }
+        expect(await send('feishu', false, { rich, level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
+    })
+
     // Only the phone can tell whether it decrypted: it shows "Decryption Failed" otherwise
     it.skipIf(!vars.CHANNEL_BARK_SEALED_TYPE)('pushes through Bark, end-to-end encrypted', async () => {
         const outcome = { messages: [{ delivered: ['bark-sealed'], failed: [] }] }
