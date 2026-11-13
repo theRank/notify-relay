@@ -29,18 +29,34 @@ export const discord: Outbound = {
     },
 }
 
-// Discord renders Markdown in an embed's title and description, and shows any punctuation after a
-// backslash as it is. Links are left whole, as an escape in one would break it
+// Discord renders Markdown in an embed's title and description and shows any punctuation after a
+// backslash as it is, but a push notification shows both raw, backslashes included. So only what
+// Discord would render gets one
+const MARKUP = new RegExp(
+    [
+        // A link, matched first to be kept whole, as an escape in one would break it
+        /(https?:\/\/[^\s<]+)/,
+        /[*`]/,
+        // A backslash that would otherwise escape what follows
+        /\\(?=[^0-9A-Za-z\s])/,
+        // An underscore within a word marks nothing
+        /(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])/,
+        // ~~strikethrough~~ and ||spoiler||
+        /~(?=~)|(?<=~)~|\|(?=\|)|(?<=\|)\|/,
+        // [masked](link)
+        /\[(?=[^\]\n]*\]\()/,
+        // <@user>, <@&role>, <#channel>, <:emoji:1>, <a:emoji:1>, <t:0>, </command:1>, <id:home>, <https://...>
+        /<(?=[@#:/]|a:|t:|id:|https?:)/,
+        // # heading, -# subtext, - or + list, > and >>> quote, at the start of a line
+        /(?<=^[ \t]*)(?:#(?=#{0,2} )|[-+](?= |# )|>(?=(?:>>)? ))/,
+        // 1. list
+        /(?<=^[ \t]*\d+)\.(?= )/,
+    ]
+        .map((rule) => rule.source)
+        .join('|'),
+    'gm',
+)
+
 function escape(text: string): string {
-    return text
-        .split(/(https?:\/\/[^\s<]+)/)
-        .map((part, i) =>
-            i % 2
-                ? part
-                : part
-                      .replace(/[\\*_~`|<[]/g, '\\$&')
-                      .replace(/^(\s*)([>#+-])/gm, '$1\\$2')
-                      .replace(/^(\s*\d+)\./gm, '$1\\.'),
-        )
-        .join('')
+    return text.replace(MARKUP, (match, link: string | undefined) => link ?? `\\${match}`)
 }

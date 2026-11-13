@@ -70,31 +70,56 @@ describe('discord', () => {
         expect(await requests[0]!.json()).toEqual({ embeds: [{ title: 'deploy done', color: 0x3498db }] })
     })
 
-    // Discord renders Markdown in an embed's title and description alike
-    it('escapes the title and the text, so they show as written', async () => {
+    async function posted(title: string, text: string): Promise<{ title: string; description: string }> {
         const { requests, ctx } = capture(ok())
-        const text = ['# no heading', '- no list', '  * no list', '1. no list', '> no quote', '`a` *b* _c_ ~~d~~ ||e|| [f](g) <@123> \\'].join('\n')
-        await discord.send({ source: 'github', title: 'deploy *prod* failed', text, level: 'normal' }, params, ctx)
+        await discord.send({ source: 'github', title, text, level: 'normal' }, params, ctx)
         const { embeds } = (await requests[0]!.json()) as { embeds: { title: string; description: string }[] }
-        expect(embeds[0]!.title).toBe('deploy \\*prod\\* failed')
-        expect(embeds[0]!.description).toBe(
-            [
+        return { title: embeds[0]!.title, description: embeds[0]!.description }
+    }
+
+    // Discord renders Markdown in an embed's title and description alike
+    it('escapes what Discord would render in the title and the text, so it shows as written', async () => {
+        const text = [
+            '# no heading',
+            '## no heading',
+            '-# no subtext',
+            '- no list',
+            '+ no list',
+            '  * no list',
+            '1. no list',
+            '> no quote',
+            '>>> no quote',
+            '`a` *b* _c_ __init__ 中_文_字 ~~d~~ ||e|| [f](g) \\* \\',
+            '<@123> <@&4> <#5> <:ok:6> <a:ok:7> <t:0> </cmd:8> <id:home> <https://example.com>',
+        ].join('\n')
+        expect(await posted('deploy *prod* failed', text)).toEqual({
+            title: 'deploy \\*prod\\* failed',
+            description: [
                 '\\# no heading',
+                '\\## no heading',
+                '\\-# no subtext',
                 '\\- no list',
+                '\\+ no list',
                 '  \\* no list',
                 '1\\. no list',
                 '\\> no quote',
-                '\\`a\\` \\*b\\* \\_c\\_ \\~\\~d\\~\\~ \\|\\|e\\|\\| \\[f](g) \\<@123> \\\\',
+                '\\>>> no quote',
+                '\\`a\\` \\*b\\* \\_c\\_ \\_\\_init\\_\\_ 中\\_文\\_字 \\~\\~d\\~\\~ \\|\\|e\\|\\| \\[f](g) \\\\\\* \\',
+                '\\<@123> \\<@&4> \\<#5> \\<:ok:6> \\<a:ok:7> \\<t:0> \\</cmd:8> \\<id:home> \\<https://example.com>',
             ].join('\n'),
-        )
+        })
+    })
+
+    // A push notification shows the title and the description raw, escapes and all
+    it('leaves what Discord would not render, so a push shows it as written too', async () => {
+        const title = '[prod] build_and_test failed: p99 < 200ms, ~5 | 6'
+        const text = ['-5 degrees', '#123 failed', '>200 ms', '2.5 seconds', 'C:\\path\\to', '[a] [b]', 'a<b'].join('\n')
+        expect(await posted(title, text)).toEqual({ title, description: text })
     })
 
     it('leaves links in the text whole, so they stay links', async () => {
-        const { requests, ctx } = capture(ok())
-        const text = 'logs at https://example.com/run_1/*_x?a=b~c for *run_1*'
-        await discord.send({ source: 'github', title: 'x', text, level: 'normal' }, params, ctx)
-        const { embeds } = (await requests[0]!.json()) as { embeds: { description: string }[] }
-        expect(embeds[0]!.description).toBe('logs at https://example.com/run_1/*_x?a=b~c for \\*run\\_1\\*')
+        const text = 'logs at https://example.com/run_1/*_x?a=b~~c for *run_1*'
+        expect((await posted('x', text)).description).toBe('logs at https://example.com/run_1/*_x?a=b~~c for \\*run_1\\*')
     })
 
     it.each<[Level, number]>([
