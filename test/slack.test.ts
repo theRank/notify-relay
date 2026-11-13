@@ -49,13 +49,18 @@ describe('slack', () => {
         })
     })
 
-    it('shows rich as Markdown in place of the text', async () => {
+    // Incoming webhooks refuse a markdown block, so rich goes in a section as Slack's own mrkdwn
+    it('shows rich as mrkdwn in place of the text, as written', async () => {
         const { requests, ctx } = capture(ok())
-        await slack.send({ source: 'github', title: 'deploy done', text: 'all green', rich: '**all** green', level: 'normal' }, params, ctx)
+        await slack.send(
+            { source: 'github', title: 'deploy done', text: 'all green', rich: '*all* green <!here>', level: 'normal' },
+            params,
+            ctx,
+        )
         const { blocks } = (await requests[0]!.json()) as { blocks: unknown[] }
         expect(blocks).toEqual([
             { type: 'header', text: { type: 'plain_text', text: 'deploy done' } },
-            { type: 'markdown', text: '**all** green' },
+            { type: 'section', text: { type: 'mrkdwn', text: '*all* green <!here>' } },
         ])
     })
 

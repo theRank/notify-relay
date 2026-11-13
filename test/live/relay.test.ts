@@ -138,8 +138,8 @@ describe('live', () => {
     })
 
     // Nothing reads the post back; the channel shows the header, the Markdown and the link
-    it.skipIf(!vars.CHANNEL_SLACK_TYPE)('posts to Slack, with Markdown and a link', async () => {
-        const rich = `Sent through **slack** on ${vars.LIVE_TARGET} by the live test, as _Markdown_.`
+    it.skipIf(!vars.CHANNEL_SLACK_TYPE)('posts to Slack, with mrkdwn and a link', async () => {
+        const rich = `Sent through *slack* on ${vars.LIVE_TARGET} by the live test, as _mrkdwn_.`
         const outcome = { messages: [{ delivered: ['slack'], failed: [] }] }
         expect(await send('slack', false, { rich, url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })

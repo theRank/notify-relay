@@ -9,8 +9,9 @@ export const slack: Outbound = {
         const { title, text, rich, url } = message
         const blocks = [
             { type: 'header', text: { type: 'plain_text', text: title } },
+            // Incoming webhooks refuse a markdown block, so rich is taken as Slack's own mrkdwn
             ...(rich
-                ? [{ type: 'markdown', text: rich }]
+                ? [{ type: 'section', text: { type: 'mrkdwn', text: rich } }]
                 : text
                   ? [{ type: 'section', text: { type: 'plain_text', text } }]
                   : []),
