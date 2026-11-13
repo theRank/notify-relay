@@ -21,10 +21,17 @@ const NAMES = [
     'LIVE_IMAP_PASSWORD',
 ] as const
 
-// Bark and Slack deliver to a device or a workspace of one's own, which the test cannot read back from:
-// without its variable, the relay under test has no such channel and its test is skipped. The ntfy topic
-// has a default
-const OPTIONAL = ['LIVE_BARK_KEY', 'LIVE_BARK_ENCRYPTION', 'LIVE_BARK_ENCRYPTION_KEY', 'LIVE_NTFY_TOPIC', 'LIVE_SLACK_URL'] as const
+// Bark, Slack and Discord deliver to a device or a workspace of one's own, which the test cannot read
+// back from: without its variable, the relay under test has no such channel and its test is skipped. The
+// ntfy topic has a default
+const OPTIONAL = [
+    'LIVE_BARK_KEY',
+    'LIVE_BARK_ENCRYPTION',
+    'LIVE_BARK_ENCRYPTION_KEY',
+    'LIVE_NTFY_TOPIC',
+    'LIVE_SLACK_URL',
+    'LIVE_DISCORD_URL',
+] as const
 
 export type Live = Record<(typeof NAMES)[number], string> & Partial<Record<(typeof OPTIONAL)[number], string>>
 
@@ -65,6 +72,7 @@ export function relaySettings(live: Live, token: string, topic: string): Record<
         CHANNEL_GMAIL_TO: live.LIVE_GMAIL_TO,
         ...(live.LIVE_BARK_KEY && { CHANNEL_BARK_TYPE: 'bark', CHANNEL_BARK_KEY: live.LIVE_BARK_KEY }),
         ...(live.LIVE_SLACK_URL && { CHANNEL_SLACK_TYPE: 'slack', CHANNEL_SLACK_URL: live.LIVE_SLACK_URL }),
+        ...(live.LIVE_DISCORD_URL && { CHANNEL_DISCORD_TYPE: 'discord', CHANNEL_DISCORD_URL: live.LIVE_DISCORD_URL }),
         CHANNEL_NTFY_TYPE: 'ntfy',
         CHANNEL_NTFY_TOPIC: topic,
         // The same device again, end-to-end encrypted as its app is set to decrypt
