@@ -27,6 +27,7 @@ function setup(config: object = env) {
         },
         now: () => 1_760_000_000_000,
         sleep: async () => {},
+        log: () => {},
     }
     return { pushed, invoke: azure(config, deps) }
 }

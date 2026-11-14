@@ -2,6 +2,7 @@ import { allowedChannels, allowlists, authenticate, sources } from './core/auth'
 import { type Channel, resolveChannels } from './core/channels'
 import { type Connect, deliver, type Outcome } from './core/deliver'
 import { BadRequest } from './core/http'
+import type { Log, LogEntry } from './core/log'
 import type { Inbound } from './core/message'
 import { parseChannels } from './core/query'
 import { alertmanager } from './inbound/alertmanager'
@@ -13,6 +14,7 @@ export interface AppDeps {
     connect: Connect
     now: () => number
     sleep: (ms: number) => Promise<void>
+    log: Log
 }
 
 const MAX_BODY_BYTES = 64 * 1024
@@ -32,12 +34,37 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
     if (!inbound) return new Response(null, { status: 404 })
     if (request.method !== 'POST') return methodNotAllowed('POST')
 
+    const seen: Seen = {}
+    const response = await receive(request, url, inbound, env, deps, seen)
+    const failed = seen.messages?.some((message) => message.failed.length > 0)
+    // A channel that failed is worth a look though the message arrived: the sender may read only the status
+    deps.log(response.status === 502 ? 'error' : response.status >= 400 || failed ? 'warn' : 'info', {
+        path: url.pathname,
+        status: response.status,
+        ...seen,
+    })
+    return response
+}
+
+// What a request leaves for the log besides its path and status
+type Seen = Pick<LogEntry, 'source' | 'error' | 'messages'>
+
+// A reason may quote the request, as an unknown field's name
+const ERROR_LOGGED = 200
+
+async function receive(request: Request, url: URL, inbound: Inbound, env: object, deps: AppDeps, seen: Seen): Promise<Response> {
+    const refuse = (status: 400 | 403, error: string) => {
+        seen.error = error.slice(0, ERROR_LOGGED)
+        return Response.json({ error }, { status })
+    }
+
     const source = authenticate(request.headers.get('authorization'), env)
     if (!source) return new Response(null, { status: 401, headers: { 'www-authenticate': 'Bearer' } })
+    seen.source = source
 
     const channels = resolveChannels(env, adapters)
     const routing = parseChannels(url, [...channels.keys()], allowedChannels(source, env))
-    if ('error' in routing) return Response.json({ error: routing.error }, { status: routing.forbidden ? 403 : 400 })
+    if ('error' in routing) return refuse(routing.forbidden ? 403 : 400, routing.error)
 
     const raw = await readBody(request)
     if (raw === undefined) return new Response(null, { status: 413 })
@@ -46,23 +73,21 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
     try {
         drafts = inbound.parse(parseJson(raw))
     } catch (error) {
-        if (error instanceof BadRequest) return badRequest(error.message)
+        if (error instanceof BadRequest) return refuse(400, error.message)
         throw error
     }
     if (drafts.length === 0) return new Response(null, { status: 204 })
     for (const draft of drafts) {
         const refused = refuseRecipients(draft.to ?? {}, [...routing.channels, ...routing.fallback, ...routing.also], channels)
-        if (refused !== undefined) return badRequest(refused)
+        if (refused !== undefined) return refuse(400, refused)
     }
 
     const outcomes: Outcome[] = []
     for (const draft of drafts) {
         outcomes.push(await deliver({ ...draft, source }, routing, { ...deps, channels }))
     }
-    return Response.json(
-        { messages: outcomes.map(({ delivered, failed }) => ({ delivered, failed })) },
-        { status: outcomes.every((outcome) => outcome.ok) ? 200 : 502 },
-    )
+    seen.messages = outcomes.map(({ delivered, failed }) => ({ delivered, failed }))
+    return Response.json({ messages: seen.messages }, { status: outcomes.every((outcome) => outcome.ok) ? 200 : 502 })
 }
 
 function ready(channels: Map<string, Channel>, env: object): boolean {
@@ -100,10 +125,6 @@ function parseJson(raw: string): unknown {
     } catch {
         throw new BadRequest('body must be valid JSON')
     }
-}
-
-function badRequest(error: string): Response {
-    return Response.json({ error }, { status: 400 })
 }
 
 function methodNotAllowed(allow: string): Response {

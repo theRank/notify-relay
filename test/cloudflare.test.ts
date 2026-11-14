@@ -42,6 +42,13 @@ describe('the deployed handler', () => {
         expect(response.status).toBe(401)
     })
 
+    // As an object, whose fields Workers Logs can be queried by
+    it('logs the request with the runtime console', async () => {
+        const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        await call('POST', '/webhook?channels=loki', { body: '{"title":"x"}' })
+        expect(warned.mock.calls).toEqual([[{ path: '/webhook', status: 401 }]])
+    })
+
     it('delivers with the runtime fetch, clock and timer', async () => {
         const fetched = vi
             .spyOn(globalThis, 'fetch')

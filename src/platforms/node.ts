@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { logLine } from '../core/log'
 import { connector } from './node/connect'
 import { listener } from './node/listener'
 
@@ -9,6 +10,7 @@ const server = createServer(
         connect: connector(),
         now: () => Date.now(),
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        log: logLine,
     }),
 )
 
