@@ -179,6 +179,43 @@ describe('channels that get a copy, named in also', () => {
     })
 })
 
+describe('a source held to a list of channels', () => {
+    const archive = {
+        CHANNEL_ARCHIVE_TYPE: 'loki',
+        CHANNEL_ARCHIVE_URL: 'https://archive.example/loki/api/v1/push',
+        CHANNEL_ARCHIVE_USER: '654321',
+        CHANNEL_ARCHIVE_TOKEN: 'glc_other',
+    }
+    const held = { ...archive, TOKEN_GRAFANA: 'nr_grafana', ALLOW_GRAFANA_CHANNELS: 'loki' }
+
+    it('delivers to a channel on its list', async () => {
+        const { pushed, send } = setup(204, held)
+        const response = await send('/webhook?channels=loki', authorized({ title: 'x' }, 'nr_grafana'))
+        expect(response.status).toBe(200)
+        expect(pushed).toHaveLength(1)
+    })
+
+    it.each(['channels=archive', 'channels=loki,archive', 'channels=loki&fallback=archive', 'channels=loki&also=archive', 'channels=pager'])(
+        'is a 403 for %s, before any channel is contacted',
+        async (query) => {
+            const { pushed, send } = setup(204, held)
+            const name = query.includes('pager') ? 'pager' : 'archive'
+            for (const path of ['/webhook', '/alertmanager']) {
+                const response = await send(`${path}?${query}`, authorized({ title: 'x' }, 'nr_grafana'))
+                expect(response.status).toBe(403)
+                expect(await response.json()).toEqual({ error: `'${name}' is not a channel this token may use` })
+            }
+            expect(pushed).toEqual([])
+        },
+    )
+
+    it('leaves the other sources free to name any channel', async () => {
+        const { send } = setup(204, held)
+        const response = await send('/webhook?channels=loki,archive', authorized({ title: 'x' }))
+        expect(await response.json()).toEqual({ messages: [{ delivered: ['loki', 'archive'], failed: [] }] })
+    })
+})
+
 describe('POST /alertmanager', () => {
     const firing = { status: 'firing', labels: { alertname: 'HostDown', host: 'a' }, annotations: { summary: 'a is down' } }
 
@@ -333,6 +370,22 @@ describe('GET /healthz', () => {
 
     it.each(['toString', 'constructor', '__proto__'])('is 503 while a channel has the type %s, which every object has but no adapter is', async (type) => {
         const { send } = setup(204, { CHANNEL_PAGER_TYPE: type })
+        expect((await send('/healthz')).status).toBe(503)
+    })
+
+    it('is 200 with a list of channels for a source that has a token, naming channels that exist, or none', async () => {
+        expect((await setup(204, { ALLOW_GITHUB_CHANNELS: 'loki' }).send('/healthz')).status).toBe(200)
+        expect((await setup(204, { ALLOW_GITHUB_CHANNELS: '' }).send('/healthz')).status).toBe(200)
+    })
+
+    // Misspelt, the list would hold nobody to anything, and say nothing
+    it('is 503 while a list of channels is for a source without a token', async () => {
+        const { send } = setup(204, { ALLOW_GITHUBB_CHANNELS: 'loki' })
+        expect((await send('/healthz')).status).toBe(503)
+    })
+
+    it('is 503 while a list of channels names one that is not configured', async () => {
+        const { send } = setup(204, { ALLOW_GITHUB_CHANNELS: 'loki,pager' })
         expect((await send('/healthz')).status).toBe(503)
     })
 

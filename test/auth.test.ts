@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { authenticate, constantTimeEqual } from '../src/core/auth'
+import { allowedChannels, allowlists, authenticate, constantTimeEqual, sources } from '../src/core/auth'
 
 const env = {
     TOKEN_GITHUB: 'nr_github',
@@ -30,6 +30,48 @@ describe('authenticate', () => {
     it('only trusts TOKEN_ secrets', () => {
         expect(authenticate('Bearer nr_not_a_source', env)).toBeUndefined()
         expect(authenticate('Bearer 123456', env)).toBeUndefined()
+    })
+})
+
+describe('sources', () => {
+    it('lists the sources that have a token', () => {
+        expect(sources({ ...env, TOKEN_EMPTY: ' ', TOKEN_BOUND: {} })).toEqual(['github', 'laptop-mac'])
+    })
+})
+
+describe('allowedChannels', () => {
+    it('is undefined for a source held to no list, which may name any channel', () => {
+        expect(allowedChannels('github', env)).toBeUndefined()
+        expect(allowedChannels('github', { ...env, ALLOW_LAPTOP_MAC_CHANNELS: 'loki' })).toBeUndefined()
+    })
+
+    it('reads the list of the source, named as its token is', () => {
+        const held = { ...env, ALLOW_GITHUB_CHANNELS: 'discord, loki,,loki', ALLOW_LAPTOP_MAC_CHANNELS: 'bark' }
+        expect(allowedChannels('github', held)).toEqual(['discord', 'loki'])
+        expect(allowedChannels('laptop-mac', held)).toEqual(['bark'])
+    })
+
+    it('admits nothing for a list that is empty or is no text, rather than everything', () => {
+        expect(allowedChannels('github', { ...env, ALLOW_GITHUB_CHANNELS: '' })).toEqual([])
+        expect(allowedChannels('github', { ...env, ALLOW_GITHUB_CHANNELS: ' , ' })).toEqual([])
+        expect(allowedChannels('github', { ...env, ALLOW_GITHUB_CHANNELS: { bound: true } })).toEqual([])
+    })
+
+    it('admits what every list admits when settings differ only in case, as they name one source', () => {
+        expect(allowedChannels('github', { ...env, ALLOW_GITHUB_CHANNELS: 'discord,loki', ALLOW_Github_CHANNELS: 'loki,bark' })).toEqual(['loki'])
+    })
+
+    it('does not take a list for a token', () => {
+        expect(authenticate('Bearer discord,loki', { ...env, ALLOW_GITHUB_CHANNELS: 'discord,loki' })).toBeUndefined()
+    })
+})
+
+describe('allowlists', () => {
+    it('lists every setting with the source it names', () => {
+        expect(allowlists({ ...env, ALLOW_GITHUB_CHANNELS: 'loki', ALLOW_NOBODY_CHANNELS: 'discord,bark', CHANNEL_MAIL_ALLOW_TO: '*' })).toEqual([
+            { source: 'github', channels: ['loki'] },
+            { source: 'nobody', channels: ['discord', 'bark'] },
+        ])
     })
 })
 

@@ -83,7 +83,8 @@ A channel delivers to its configured recipients (`TO` on mail channels) unless `
 Each entry must name a channel in `channels`, `fallback` or `also`, of a type that takes recipients
 (`smtp`, `gmail`), written in that type's syntax and admitted by the channel's `ALLOW_TO`; otherwise the
 request is a 400 and nothing is delivered. A channel without an entry, a fallback included, uses its own
-recipients. Any sender token can reach whoever `ALLOW_TO` admits, so keep it narrow.
+recipients. Any sender token that may use the channel can reach whoever `ALLOW_TO` admits, so keep it
+narrow.
 
 ### Alertmanager and Grafana
 
@@ -129,7 +130,7 @@ message, as a message per alert would repeat every alert of the group each time:
 |---|---|
 | 200 | At least one primary channel succeeded, or the primary group failed and a fallback succeeded |
 | 204 | The inbound adapter produced no message (e.g. an empty alert group) |
-| 400, 401, 404, 405, 413 | The request is wrong; retrying will not help |
+| 400, 401, 403, 404, 405, 413 | The request is wrong; retrying will not help |
 | 502 | Every channel in `channels` and `fallback` failed; retry |
 
 200 and 502 list the outcome per channel, those in `also` included, without any secret:
@@ -141,7 +142,8 @@ message, as a message per alert would repeat every alert of the group each time:
 An error that would quote one of the channel's settings, as fetch quotes a URL it cannot use, token and
 all, has `<redacted>` in its place. Settings under 8 characters, such as a port, are left as they are.
 
-A 400 body is `{"error": "<reason>"}`. A 401 has no body, only `WWW-Authenticate: Bearer`. Delivery is
+A 400 body is `{"error": "<reason>"}`, and so is that of a 403, which is for a channel the token
+[may not use](#authentication). A 401 has no body, only `WWW-Authenticate: Bearer`. Delivery is
 at-least-once: an occasional duplicate is preferred to a silent loss, and `key` lets channels collapse
 duplicates.
 
@@ -154,8 +156,9 @@ request; the caller retries.
 
 `GET /healthz` needs no token and calls no channel; `HEAD` gets the same status without the body. It
 answers 200 when at least one channel is configured, every configured channel has a known type and all of
-that type's required parameters, and at least one source token exists; 503 otherwise, without saying what
-is missing. Channel types nobody configured are not checked. Deploys do not check settings (see
+that type's required parameters, at least one source token exists, and every
+[list of channels](#authentication) is for a source with a token and names configured channels; 503
+otherwise, without saying what is missing. Channel types nobody configured are not checked. Deploys do not check settings (see
 [Platforms](#platforms)), so point an external probe here.
 
 ## Authentication
@@ -177,6 +180,24 @@ Generate a token with the `nr_` prefix, which makes it easy for secret scanners 
 ```bash
 printf 'nr_%s\n' "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
 ```
+
+A token can use every channel unless its source is held to a list of them, in a variable named after the
+source as its secret is:
+
+```text
+TOKEN_GRAFANA=nr_...                  # secret
+ALLOW_GRAFANA_CHANNELS=discord,loki   # variable
+```
+
+- A request naming any other channel, in `channels`, `fallback` or `also`, is a 403 and delivers
+  nothing. It is the same 403 whether that channel exists, so the token does not tell which others the
+  deployment has.
+- A list that is set and empty admits nothing. A source without a list is held to none, so a token meant
+  for one channel needs its list; `/healthz` answers 503 for a list whose source has no token, as a
+  misspelt name would otherwise leave the source free without a sign, and for one naming a channel that
+  is not configured.
+- The list is not under `TOKEN_`, where it would be taken for a token.
+- It is about channels only. Whom a mail channel may write to is that channel's `ALLOW_TO`.
 
 ## Channels
 
@@ -529,8 +550,8 @@ PORT=8080 TOKEN_GITHUB=nr_... CHANNEL_LOGS_TYPE=loki CHANNEL_LOGS_URL=https://..
 ```
 
 - Settings are environment variables with the same names as on Workers. Every `TOKEN_*` variable is a
-  sender token and every `CHANNEL_*_TYPE` declares a channel, so keep other variables of those shapes out
-  of the process's environment.
+  sender token, every `CHANNEL_*_TYPE` declares a channel and every `ALLOW_*_CHANNELS` is a source's list
+  of channels, so keep other variables of those shapes out of the process's environment.
 - `PORT` is where it listens, 8080 by default, over plain HTTP: put a proxy or load balancer that
   terminates TLS in front of it.
 - `SIGTERM` or `SIGINT` stops new connections; requests in flight finish first.

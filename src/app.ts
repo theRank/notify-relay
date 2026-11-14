@@ -1,4 +1,4 @@
-import { authenticate, hasSources } from './core/auth'
+import { allowedChannels, allowlists, authenticate, sources } from './core/auth'
 import { type Channel, resolveChannels } from './core/channels'
 import { type Connect, deliver, type Outcome } from './core/deliver'
 import { BadRequest } from './core/http'
@@ -36,8 +36,8 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
     if (!source) return new Response(null, { status: 401, headers: { 'www-authenticate': 'Bearer' } })
 
     const channels = resolveChannels(env, adapters)
-    const routing = parseChannels(url, [...channels.keys()])
-    if ('error' in routing) return badRequest(routing.error)
+    const routing = parseChannels(url, [...channels.keys()], allowedChannels(source, env))
+    if ('error' in routing) return Response.json({ error: routing.error }, { status: routing.forbidden ? 403 : 400 })
 
     const raw = await readBody(request)
     if (raw === undefined) return new Response(null, { status: 413 })
@@ -68,7 +68,10 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
 function ready(channels: Map<string, Channel>, env: object): boolean {
     const configured = [...channels.values()]
     const complete = configured.every((channel) => channel.adapter !== undefined && channel.missing.length === 0)
-    return configured.length > 0 && complete && hasSources(env)
+    const senders = sources(env)
+    // A list for a source without a token holds nobody to anything, which a misspelt name would not show
+    const held = allowlists(env).every((list) => senders.includes(list.source) && list.channels.every((name) => channels.has(name)))
+    return configured.length > 0 && complete && senders.length > 0 && held
 }
 
 // Content-Length is not trusted
