@@ -12,7 +12,7 @@ describe('logLine', () => {
         ['error', 'error'],
     ] as const)('writes an entry of level %s as one line of JSON with console.%s', (level, method) => {
         const written = vi.spyOn(console, method).mockImplementation(() => {})
-        logLine(level, { path: '/webhook', status: 200, source: 'github' })
-        expect(written.mock.calls).toEqual([['{"path":"/webhook","status":200,"source":"github"}']])
+        logLine(level, { message: '/webhook 200 from github', path: '/webhook', status: 200, source: 'github' })
+        expect(written.mock.calls).toEqual([['{"message":"/webhook 200 from github","path":"/webhook","status":200,"source":"github"}']])
     })
 })

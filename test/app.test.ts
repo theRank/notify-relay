@@ -160,7 +160,10 @@ describe('the line logged for a request', () => {
         const { logged, send } = setup()
         await send('/webhook?channels=loki', authorized({ title: 'x' }))
         expect(logged).toEqual([
-            { level: 'info', entry: { path: '/webhook', status: 200, source: 'github', messages: [{ delivered: ['loki'], failed: [] }] } },
+            {
+                level: 'info',
+                entry: { message: '/webhook 200 from github', path: '/webhook', status: 200, source: 'github', messages: [{ delivered: ['loki'], failed: [] }] },
+            },
         ])
     })
 
@@ -170,7 +173,13 @@ describe('the line logged for a request', () => {
         expect(logged).toEqual([
             {
                 level: 'error',
-                entry: { path: '/webhook', status: 502, source: 'github', messages: [{ delivered: [], failed: [{ channel: 'loki', error: 'HTTP 500' }] }] },
+                entry: {
+                    message: '/webhook 502 from github, failed: loki',
+                    path: '/webhook',
+                    status: 502,
+                    source: 'github',
+                    messages: [{ delivered: [], failed: [{ channel: 'loki', error: 'HTTP 500' }] }],
+                },
             },
         ])
     })
@@ -184,6 +193,7 @@ describe('the line logged for a request', () => {
             {
                 level: 'warn',
                 entry: {
+                    message: '/webhook 200 from github, failed: archive',
                     path: '/webhook',
                     status: 200,
                     source: 'github',
@@ -196,7 +206,7 @@ describe('the line logged for a request', () => {
     it('has no messages for a notification that held none', async () => {
         const { logged, send } = setup()
         await send('/alertmanager?channels=loki', authorized({ alerts: [] }))
-        expect(logged).toEqual([{ level: 'info', entry: { path: '/alertmanager', status: 204, source: 'github' } }])
+        expect(logged).toEqual([{ level: 'info', entry: { message: '/alertmanager 204 from github', path: '/alertmanager', status: 204, source: 'github' } }])
     })
 
     it('is a warning with the reason for a request that was refused', async () => {
@@ -205,16 +215,28 @@ describe('the line logged for a request', () => {
         await send('/webhook?channels=loki', authorized({ title: 'x' }, 'nr_grafana'))
         await send('/webhook?channels=loki', { ...authorized(null), body: 'x'.repeat(64 * 1024 + 1) })
         expect(logged).toEqual([
-            { level: 'warn', entry: { path: '/webhook', status: 400, source: 'github', error: "unknown channel 'pager'" } },
-            { level: 'warn', entry: { path: '/webhook', status: 403, source: 'grafana', error: "'loki' is not a channel this token may use" } },
-            { level: 'warn', entry: { path: '/webhook', status: 413, source: 'github' } },
+            {
+                level: 'warn',
+                entry: { message: "/webhook 400 from github: unknown channel 'pager'", path: '/webhook', status: 400, source: 'github', error: "unknown channel 'pager'" },
+            },
+            {
+                level: 'warn',
+                entry: {
+                    message: "/webhook 403 from grafana: 'loki' is not a channel this token may use",
+                    path: '/webhook',
+                    status: 403,
+                    source: 'grafana',
+                    error: "'loki' is not a channel this token may use",
+                },
+            },
+            { level: 'warn', entry: { message: '/webhook 413 from github', path: '/webhook', status: 413, source: 'github' } },
         ])
     })
 
     it('names no source for a caller without a token', async () => {
         const { logged, send } = setup()
         await send('/webhook?channels=loki', authorized({ title: 'x' }, 'nr_wrong'))
-        expect(logged).toEqual([{ level: 'warn', entry: { path: '/webhook', status: 401 } }])
+        expect(logged).toEqual([{ level: 'warn', entry: { message: '/webhook 401', path: '/webhook', status: 401 } }])
     })
 
     it('cuts a reason that quotes much of the request', async () => {

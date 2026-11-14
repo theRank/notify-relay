@@ -36,9 +36,15 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
 
     const seen: Seen = {}
     const response = await receive(request, url, inbound, env, deps, seen)
-    const failed = seen.messages?.some((message) => message.failed.length > 0)
+    const failed = [...new Set(seen.messages?.flatMap((message) => message.failed.map(({ channel }) => channel)))]
     // A channel that failed is worth a look though the message arrived: the sender may read only the status
-    deps.log(response.status === 502 ? 'error' : response.status >= 400 || failed ? 'warn' : 'info', {
+    deps.log(response.status === 502 ? 'error' : response.status >= 400 || failed.length > 0 ? 'warn' : 'info', {
+        message: [
+            `${url.pathname} ${response.status}`,
+            seen.source === undefined ? '' : ` from ${seen.source}`,
+            failed.length > 0 ? `, failed: ${failed.join(', ')}` : '',
+            seen.error === undefined ? '' : `: ${seen.error}`,
+        ].join(''),
         path: url.pathname,
         status: response.status,
         ...seen,
