@@ -100,6 +100,14 @@ describe('lambda', () => {
         expect(pushed).toHaveLength(0)
     })
 
+    it.each(['TRACE', 'trace', 'CONNECT', 'TRACK'])('answers 501 to %s, which a Request cannot carry, without logging an error', async (method) => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const { invoke } = setup()
+
+        expect(await invoke(event(method, '/webhook', 'channels=loki'))).toEqual({ statusCode: 501, headers: {}, body: '', isBase64Encoded: false })
+        expect(logged).not.toHaveBeenCalled()
+    })
+
     it('answers 500 to payload format 1.0, saying which one it needs', async () => {
         const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
         const { invoke } = setup()

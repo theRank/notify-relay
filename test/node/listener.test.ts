@@ -130,6 +130,23 @@ describe('node listener', () => {
         expect((await fetch(`${origin}/nope`)).status).toBe(404)
     })
 
+    it('answers 501 to TRACE, which a Request cannot carry, without logging an error', async () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const { origin } = await serve()
+        const status = await new Promise<number>((resolve, reject) => {
+            const req = httpRequest(`${origin}/webhook?channels=loki`, { method: 'TRACE' })
+            req.on('response', (res) => {
+                res.resume()
+                resolve(res.statusCode!)
+            })
+            req.on('error', reject)
+            req.end()
+        })
+
+        expect(status).toBe(501)
+        expect(logged).not.toHaveBeenCalled()
+    })
+
     it('ignores the Host header, which the client controls', async () => {
         const { origin } = await serve()
         const status = await new Promise<number>((resolve, reject) => {

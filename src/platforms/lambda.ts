@@ -1,4 +1,5 @@
 import { type AppDeps, handle } from '../app'
+import { unsupported } from './method'
 import { connector } from './node/connect'
 import { ORIGIN } from './origin'
 
@@ -22,9 +23,10 @@ export interface LambdaResult {
 
 export function lambda(env: object, deps: AppDeps): (event: LambdaEvent) => Promise<LambdaResult> {
     return async (event) => {
+        const method = event.requestContext?.http?.method ?? 'GET'
         let response: Response
         try {
-            response = await handle(toRequest(event), env, deps)
+            response = unsupported(method) ?? (await handle(toRequest(event, method), env, deps))
         } catch (error) {
             console.error(error)
             response = new Response(null, { status: 500 })
@@ -33,9 +35,8 @@ export function lambda(env: object, deps: AppDeps): (event: LambdaEvent) => Prom
     }
 }
 
-function toRequest(event: LambdaEvent): Request {
+function toRequest(event: LambdaEvent, method: string): Request {
     if (event.version !== '2.0') throw new Error('notify-relay reads payload format 2.0, as Function URLs and HTTP APIs send')
-    const method = event.requestContext?.http?.method ?? 'GET'
     const url = new URL(`${event.rawPath ?? '/'}?${event.rawQueryString ?? ''}`, ORIGIN)
     const body = !event.body || method === 'GET' || method === 'HEAD' ? {} : { body: event.isBase64Encoded ? Buffer.from(event.body, 'base64') : event.body }
     return new Request(url, { method, headers: event.headers ?? {}, ...body })
