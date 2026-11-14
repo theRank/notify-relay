@@ -4,6 +4,7 @@ import { type Connect, deliver, type Outcome } from './core/deliver'
 import { BadRequest } from './core/http'
 import type { Inbound } from './core/message'
 import { parseChannels } from './core/query'
+import { alertmanager } from './inbound/alertmanager'
 import { webhook } from './inbound/webhook'
 import { adapters } from './outbound'
 
@@ -16,7 +17,7 @@ export interface AppDeps {
 
 const MAX_BODY_BYTES = 64 * 1024
 
-const inbounds: Record<string, Inbound> = { '/webhook': webhook }
+const inbounds: Record<string, Inbound> = { '/webhook': webhook, '/alertmanager': alertmanager }
 
 // Token first: an unauthenticated caller learns nothing from validation and never has its body read
 export async function handle(request: Request, env: object, deps: AppDeps): Promise<Response> {
