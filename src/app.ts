@@ -51,13 +51,13 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
     }
     if (drafts.length === 0) return new Response(null, { status: 204 })
     for (const draft of drafts) {
-        const refused = refuseRecipients(draft.to ?? {}, [...routing.channels, ...routing.fallback], channels)
+        const refused = refuseRecipients(draft.to ?? {}, [...routing.channels, ...routing.fallback, ...routing.also], channels)
         if (refused !== undefined) return badRequest(refused)
     }
 
     const outcomes: Outcome[] = []
     for (const draft of drafts) {
-        outcomes.push(await deliver({ ...draft, source }, routing.channels, routing.fallback, { ...deps, channels }))
+        outcomes.push(await deliver({ ...draft, source }, routing, { ...deps, channels }))
     }
     return Response.json(
         { messages: outcomes.map(({ delivered, failed }) => ({ delivered, failed })) },
