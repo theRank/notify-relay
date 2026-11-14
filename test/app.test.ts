@@ -251,6 +251,11 @@ describe('GET /healthz', () => {
         expect((await send('/healthz')).status).toBe(503)
     })
 
+    it.each(['toString', 'constructor', '__proto__'])('is 503 while a channel has the type %s, which every object has but no adapter is', async (type) => {
+        const { send } = setup(204, { CHANNEL_PAGER_TYPE: type })
+        expect((await send('/healthz')).status).toBe(503)
+    })
+
     it('is 503 with no channel at all', async () => {
         const { send } = setup(204, { CHANNEL_LOKI_TYPE: undefined })
         expect((await send('/healthz')).status).toBe(503)
