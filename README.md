@@ -107,11 +107,11 @@ request; the caller retries.
 
 ### Health
 
-`GET /healthz` needs no token and calls no channel. It answers 200 when at least one channel is
-configured, every configured channel has a known type and all of that type's required parameters, and at
-least one source token exists; 503 otherwise, without saying what is missing. Channel types nobody
-configured are not checked. Deploys do not check settings (see [Platforms](#platforms)), so point an
-external probe here.
+`GET /healthz` needs no token and calls no channel; `HEAD` gets the same status without the body. It
+answers 200 when at least one channel is configured, every configured channel has a known type and all of
+that type's required parameters, and at least one source token exists; 503 otherwise, without saying what
+is missing. Channel types nobody configured are not checked. Deploys do not check settings (see
+[Platforms](#platforms)), so point an external probe here.
 
 ## Authentication
 

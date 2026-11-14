@@ -256,6 +256,21 @@ describe('GET /healthz', () => {
         expect((await send('/healthz')).status).toBe(503)
     })
 
+    it('answers HEAD as it does GET, without the body', async () => {
+        const ready = await setup().send('/healthz', { method: 'HEAD' })
+        expect(ready.status).toBe(200)
+        expect(await ready.text()).toBe('')
+        const missing = await setup(204, { CHANNEL_LOKI_TOKEN: undefined }).send('/healthz', { method: 'HEAD' })
+        expect(missing.status).toBe(503)
+        expect(await missing.text()).toBe('')
+    })
+
+    it('takes no other method', async () => {
+        const response = await setup().send('/healthz', { method: 'POST' })
+        expect(response.status).toBe(405)
+        expect(response.headers.get('allow')).toBe('GET, HEAD')
+    })
+
     it('is 503 with no channel at all', async () => {
         const { send } = setup(204, { CHANNEL_LOKI_TYPE: undefined })
         expect((await send('/healthz')).status).toBe(503)
