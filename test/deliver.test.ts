@@ -9,6 +9,8 @@ const message: Message = { source: 'test', title: 'hello', level: 'normal' }
 
 type Behaviour = 'ok' | 'fail' | 'hang' | number
 
+const route = (channels: string[], fallback: string[] = [], also: string[] = []) => ({ channels, fallback, also })
+
 // Each call consumes the next behaviour; a number means 429 asking to wait that many milliseconds
 function channel(name: string, behaviours: Behaviour[], calls: string[]): Channel {
     const adapter: Outbound = {
@@ -56,27 +58,27 @@ describe('deliver', () => {
         const connect = (): never => {
             throw new Error('fake channels do not connect')
         }
-        await deliver(message, ['ops', 'family'], [], { channels, fetch: async () => new Response(null), connect, now: () => 0, sleep: async () => {} })
+        await deliver(message, route(['ops', 'family']), { channels, fetch: async () => new Response(null), connect, now: () => 0, sleep: async () => {} })
         expect(seen.sort()).toEqual(['family', 'ops'])
     })
 
     it('sends to the whole primary group', async () => {
         const { calls, deps } = setup({ a: ['ok'], b: ['ok'] })
-        const outcome = await deliver(message, ['a', 'b'], ['c'], deps)
+        const outcome = await deliver(message, route(['a', 'b'], ['c']), deps)
         expect(outcome).toEqual({ ok: true, delivered: ['a', 'b'], failed: [] })
         expect(calls.sort()).toEqual(['a', 'b'])
     })
 
     it('needs only one primary success and then skips the fallback', async () => {
         const { calls, deps } = setup({ a: ['fail'], b: ['ok'], c: ['ok'] })
-        const outcome = await deliver(message, ['a', 'b'], ['c'], deps)
+        const outcome = await deliver(message, route(['a', 'b'], ['c']), deps)
         expect(outcome).toEqual({ ok: true, delivered: ['b'], failed: [{ channel: 'a', error: 'HTTP 500' }] })
         expect(calls).not.toContain('c')
     })
 
     it('walks the fallback in order and stops at the first success', async () => {
         const { calls, deps } = setup({ a: ['fail'], c: ['fail'], d: ['ok'], e: ['ok'] })
-        const outcome = await deliver(message, ['a'], ['c', 'd', 'e'], deps)
+        const outcome = await deliver(message, route(['a'], ['c', 'd', 'e']), deps)
         expect(outcome.ok).toBe(true)
         expect(outcome.delivered).toEqual(['d'])
         expect(calls).toEqual(['a', 'c', 'd'])
@@ -84,7 +86,7 @@ describe('deliver', () => {
 
     it('fails when every channel fails', async () => {
         const { deps } = setup({ a: ['fail'], c: ['fail'] })
-        const outcome = await deliver(message, ['a'], ['c'], deps)
+        const outcome = await deliver(message, route(['a'], ['c']), deps)
         expect(outcome).toEqual({
             ok: false,
             delivered: [],
@@ -95,15 +97,53 @@ describe('deliver', () => {
         })
     })
 
+    describe('copies, to the channels named in also', () => {
+        it('go out with the primary group', async () => {
+            const { calls, deps } = setup({ a: ['ok'], l: ['ok'] })
+            const outcome = await deliver(message, route(['a'], ['c'], ['l']), deps)
+            expect(outcome).toEqual({ ok: true, delivered: ['a', 'l'], failed: [] })
+            expect(calls.sort()).toEqual(['a', 'l'])
+        })
+
+        it('do not wait for the primary group', async () => {
+            let copied!: () => void
+            const copy = new Promise<void>((resolve) => (copied = resolve))
+            const waiting: Channel = { name: 'a', type: 'fake', adapter: { type: 'fake', params: [], send: () => copy }, params: {}, missing: [] }
+            const signals: Channel = { name: 'l', type: 'fake', adapter: { type: 'fake', params: [], send: async () => copied() }, params: {}, missing: [] }
+            const { deps } = setup({}, [waiting, signals])
+            const outcome = await deliver(message, route(['a'], [], ['l']), deps)
+            expect(outcome).toEqual({ ok: true, delivered: ['a', 'l'], failed: [] })
+        })
+
+        it('do not fail the message when they fail', async () => {
+            const { deps } = setup({ a: ['ok'], l: ['fail'] })
+            const outcome = await deliver(message, route(['a'], [], ['l']), deps)
+            expect(outcome).toEqual({ ok: true, delivered: ['a'], failed: [{ channel: 'l', error: 'HTTP 500' }] })
+        })
+
+        it('do not make up for a primary group that failed', async () => {
+            const { deps } = setup({ a: ['fail'], l: ['ok'] })
+            const outcome = await deliver(message, route(['a'], [], ['l']), deps)
+            expect(outcome).toEqual({ ok: false, delivered: ['l'], failed: [{ channel: 'a', error: 'HTTP 500' }] })
+        })
+
+        it('do not keep the fallback from being tried', async () => {
+            const { calls, deps } = setup({ a: ['fail'], c: ['ok'], l: ['ok'] })
+            const outcome = await deliver(message, route(['a'], ['c'], ['l']), deps)
+            expect(outcome).toEqual({ ok: true, delivered: ['c', 'l'], failed: [{ channel: 'a', error: 'HTTP 500' }] })
+            expect(calls).toContain('c')
+        })
+    })
+
     it('gives up on a channel that does not answer in time', async () => {
         const { deps } = setup({ a: ['hang'] })
-        const outcome = await deliver(message, ['a'], [], deps)
+        const outcome = await deliver(message, route(['a']), deps)
         expect(outcome.failed).toEqual([{ channel: 'a', error: 'timeout' }])
     })
 
     it('retries a short rate limit once', async () => {
         const { calls, sleeps, deps } = setup({ a: [1500, 'ok'] })
-        const outcome = await deliver(message, ['a'], [], deps)
+        const outcome = await deliver(message, route(['a']), deps)
         expect(outcome.delivered).toEqual(['a'])
         expect(sleeps).toEqual([1500])
         expect(calls).toEqual(['a', 'a'])
@@ -111,7 +151,7 @@ describe('deliver', () => {
 
     it('does not wait out a long rate limit', async () => {
         const { calls, sleeps, deps } = setup({ a: [2500] })
-        const outcome = await deliver(message, ['a'], [], deps)
+        const outcome = await deliver(message, route(['a']), deps)
         expect(outcome.failed).toEqual([{ channel: 'a', error: 'rate limited' }])
         expect(sleeps).toEqual([])
         expect(calls).toEqual(['a'])
@@ -119,7 +159,7 @@ describe('deliver', () => {
 
     it('retries at most once', async () => {
         const { calls, deps } = setup({ a: [100, 100, 'ok'] })
-        const outcome = await deliver(message, ['a'], [], deps)
+        const outcome = await deliver(message, route(['a']), deps)
         expect(outcome.failed).toEqual([{ channel: 'a', error: 'rate limited' }])
         expect(calls).toEqual(['a', 'a'])
     })
@@ -127,13 +167,13 @@ describe('deliver', () => {
     it('fails a channel that is missing parameters without calling it', async () => {
         const broken: Channel = { ...channel('logs', ['ok'], []), missing: ['USER', 'TOKEN'] }
         const { deps } = setup({}, [broken])
-        const outcome = await deliver(message, ['logs'], [], deps)
+        const outcome = await deliver(message, route(['logs']), deps)
         expect(outcome.failed).toEqual([{ channel: 'logs', error: 'missing USER, TOKEN' }])
     })
 
     it('fails a channel of an unknown type', async () => {
         const { deps } = setup({}, [{ name: 'pager', type: 'pagerduty', params: {}, missing: [] }])
-        const outcome = await deliver(message, ['pager'], [], deps)
+        const outcome = await deliver(message, route(['pager']), deps)
         expect(outcome.failed).toEqual([{ channel: 'pager', error: "unknown type 'pagerduty'" }])
     })
 
@@ -153,7 +193,7 @@ describe('deliver', () => {
         })
         const failure = async (params: Record<string, string>, error: string) => {
             const { deps } = setup({}, [failing(params, error)])
-            return (await deliver(message, ['hook'], [], deps)).failed
+            return (await deliver(message, route(['hook']), deps)).failed
         }
 
         it('in place of a setting an error quotes', async () => {
@@ -184,7 +224,7 @@ describe('deliver', () => {
         it('in place of a setting the runtime’s fetch quotes, such as a URL it cannot parse', async () => {
             const URL = 'htps//hooks.example.com/hook/s3cr3t-0123456789'
             const { deps } = setup({}, [{ name: 'hook', type: 'webhook', adapter: webhook, params: { URL }, missing: [] }])
-            const outcome = await deliver(message, ['hook'], [], { ...deps, fetch })
+            const outcome = await deliver(message, route(['hook']), { ...deps, fetch })
             expect(outcome.failed).toHaveLength(1)
             expect(outcome.failed[0]!.error).not.toContain('s3cr3t')
         })

@@ -1,15 +1,28 @@
-export type Routing = { channels: string[]; fallback: string[] } | { error: string }
+export interface Route {
+    channels: string[]
+    fallback: string[]
+    also: string[]
+}
+
+export type Routing = Route | { error: string }
+
+const GROUPS = ['channels', 'fallback', 'also'] as const
 
 export function parseChannels(url: URL, known: readonly string[]): Routing {
-    const channels = list(url.searchParams.get('channels'))
-    const fallback = list(url.searchParams.get('fallback'))
-    if (channels.length === 0) return { error: 'channels is required' }
-    for (const name of [...channels, ...fallback]) {
-        if (!known.includes(name)) return { error: `unknown channel '${name}'` }
+    const route: Route = { channels: [], fallback: [], also: [] }
+    for (const group of GROUPS) route[group] = list(url.searchParams.get(group))
+    if (route.channels.length === 0) return { error: 'channels is required' }
+
+    const groupOf = new Map<string, string>()
+    for (const group of GROUPS) {
+        for (const name of route[group]) {
+            if (!known.includes(name)) return { error: `unknown channel '${name}'` }
+            const other = groupOf.get(name)
+            if (other !== undefined) return { error: `'${name}' is in both ${other} and ${group}` }
+            groupOf.set(name, group)
+        }
     }
-    const both = channels.find((name) => fallback.includes(name))
-    if (both) return { error: `'${both}' is in both channels and fallback` }
-    return { channels, fallback }
+    return route
 }
 
 function list(value: string | null): string[] {

@@ -98,6 +98,7 @@ describe('POST /webhook', () => {
         const cases: [string, RequestInit, string][] = [
             ['/webhook', authorized({ title: 'x' }), 'channels is required'],
             ['/webhook?channels=pager', authorized({ title: 'x' }), "unknown channel 'pager'"],
+            ['/webhook?channels=loki&also=loki', authorized({ title: 'x' }), "'loki' is in both channels and also"],
             ['/webhook?channels=loki', authorized({ titel: 'x' }), "unknown field 'titel'"],
             [
                 '/webhook?channels=loki',
@@ -142,6 +143,39 @@ describe('POST /webhook', () => {
         const response = await send('/webhook?channels=loki', { method: 'GET' })
         expect(response.status).toBe(405)
         expect(response.headers.get('allow')).toBe('POST')
+    })
+})
+
+describe('channels that get a copy, named in also', () => {
+    const archive = {
+        CHANNEL_ARCHIVE_TYPE: 'loki',
+        CHANNEL_ARCHIVE_URL: 'https://archive.example/loki/api/v1/push',
+        CHANNEL_ARCHIVE_USER: '654321',
+        CHANNEL_ARCHIVE_TOKEN: 'glc_other',
+    }
+
+    function send(path: string, down: string) {
+        const deps = {
+            fetch: async (input: RequestInfo | URL) => new Response(null, { status: new URL(new Request(input).url).hostname === down ? 500 : 204 }),
+            connect: (): never => {
+                throw new Error('loki does not connect')
+            },
+            now: () => 1_760_000_000_000,
+            sleep: async () => {},
+        }
+        return handle(new Request(`https://notify.example${path}`, authorized({ title: 'x' })), { ...env, ...archive }, deps)
+    }
+
+    it('is 200 when only the copy failed', async () => {
+        const response = await send('/webhook?channels=loki&also=archive', 'archive.example')
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({ messages: [{ delivered: ['loki'], failed: [{ channel: 'archive', error: 'HTTP 500' }] }] })
+    })
+
+    it('is 502 when only the copy arrived', async () => {
+        const response = await send('/webhook?channels=loki&also=archive', 'logs.example')
+        expect(response.status).toBe(502)
+        expect(await response.json()).toEqual({ messages: [{ delivered: ['archive'], failed: [{ channel: 'loki', error: 'HTTP 500' }] }] })
     })
 })
 
@@ -248,6 +282,7 @@ describe('recipients a message names in to', () => {
         ['a channel without ALLOW_TO', '/webhook?channels=mail', { mail: 'a@example.org' }, {}, 'to.mail: custom recipients not enabled'],
         ['a recipient outside ALLOW_TO', '/webhook?channels=mail', { mail: 'a@example.org, spy@example.com' }, { CHANNEL_MAIL_ALLOW_TO: '*@example.org' }, 'to.mail: recipient not allowed'],
         ['a fallback channel without ALLOW_TO', '/webhook?channels=loki&fallback=mail', { mail: 'a@example.org' }, {}, 'to.mail: custom recipients not enabled'],
+        ['a channel that gets a copy, without ALLOW_TO', '/webhook?channels=loki&also=mail', { mail: 'a@example.org' }, {}, 'to.mail: custom recipients not enabled'],
     ])('is a 400 for %s, before any channel is contacted', async (_, path, recipients, extra, error) => {
         const { requests, send } = setup(extra)
         const response = await send(path, { title: 'x', to: recipients })

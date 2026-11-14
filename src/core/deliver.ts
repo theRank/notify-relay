@@ -1,6 +1,7 @@
 import type { Channel } from './channels'
 import { RateLimited } from './http'
 import type { Message } from './message'
+import type { Route } from './query'
 
 // The subset of Cloudflare's sockets API that smtp uses, so its connect() fits as is
 export interface Connection {
@@ -49,29 +50,32 @@ export interface Outcome {
 const TIMEOUT_MS = 5000
 const MAX_WAIT_MS = 2000
 
-export async function deliver(message: Message, channels: string[], fallback: string[], deps: Deps): Promise<Outcome> {
+export async function deliver(message: Message, route: Route, deps: Deps): Promise<Outcome> {
     const delivered: string[] = []
     const failed: Outcome['failed'] = []
-
-    const errors = await Promise.all(channels.map((channel) => attempt(message, channel, deps)))
-    channels.forEach((channel, i) => {
-        const error = errors[i]
+    const record = (channel: string, error: string | undefined) => {
         if (error === undefined) delivered.push(channel)
         else failed.push({ channel, error })
-    })
-
-    if (delivered.length === 0) {
-        for (const channel of fallback) {
-            const error = await attempt(message, channel, deps)
-            if (error === undefined) {
-                delivered.push(channel)
-                break
-            }
-            failed.push({ channel, error })
-        }
     }
 
-    return { ok: delivered.length > 0, delivered, failed }
+    // The copies go out with the primary group and are not waited for until the message has its outcome,
+    // which they do not change: one that arrives does not make up for the others, nor spare the fallback
+    const copies = Promise.all(route.also.map((channel) => attempt(message, channel, deps)))
+    const errors = await Promise.all(route.channels.map((channel) => attempt(message, channel, deps)))
+    route.channels.forEach((channel, i) => record(channel, errors[i]))
+
+    if (delivered.length === 0) {
+        for (const channel of route.fallback) {
+            const error = await attempt(message, channel, deps)
+            record(channel, error)
+            if (error === undefined) break
+        }
+    }
+    const ok = delivered.length > 0
+
+    const copied = await copies
+    route.also.forEach((channel, i) => record(channel, copied[i]))
+    return { ok, delivered, failed }
 }
 
 async function attempt(message: Message, name: string, deps: Deps): Promise<string | undefined> {
