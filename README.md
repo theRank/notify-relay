@@ -40,9 +40,15 @@ way; for an adapter that translates a third-party payload, the body is that payl
 |---|---|---|
 | `channels` | yes | Primary group: names of configured channels, comma-separated, delivered in parallel |
 | `fallback` | no | Tried in order, only when the whole primary group failed, until one succeeds |
+| `also` | no | Channels that get a copy, sent with the primary group. Whether a copy arrives changes neither the status nor whether the fallback is tried |
 
-A channel that is not configured, a channel in both groups or a missing `channels` is a 400. Channel
+A channel that is not configured, a channel in two groups or a missing `channels` is a 400. Channel
 names are the deployment's own (see [Channels](#channels)), not channel types.
+
+The status says whether the message arrived on a channel in `channels` or `fallback`, so a sender that
+reads only the status, and tries again on a 502, names there the channels that must have it and in `also`
+the ones that keep a record: `?channels=discord&also=loki`. A copy is sent on every attempt, so a message
+the sender retries is recorded once for each.
 
 `/webhook` takes the relay's own format:
 
@@ -74,10 +80,10 @@ A channel delivers to its configured recipients (`TO` on mail channels) unless `
 {"title": "invoice paid", "to": {"mail": "Jane <jane@example.com>"}}
 ```
 
-Each entry must name a channel in `channels` or `fallback`, of a type that takes recipients (`smtp`,
-`gmail`), written in that type's syntax and admitted by the channel's `ALLOW_TO`; otherwise the request is
-a 400 and nothing is delivered. A channel without an entry, a fallback included, uses its own recipients.
-Any sender token can reach whoever `ALLOW_TO` admits, so keep it narrow.
+Each entry must name a channel in `channels`, `fallback` or `also`, of a type that takes recipients
+(`smtp`, `gmail`), written in that type's syntax and admitted by the channel's `ALLOW_TO`; otherwise the
+request is a 400 and nothing is delivered. A channel without an entry, a fallback included, uses its own
+recipients. Any sender token can reach whoever `ALLOW_TO` admits, so keep it narrow.
 
 ### Alertmanager and Grafana
 
@@ -124,9 +130,9 @@ message, as a message per alert would repeat every alert of the group each time:
 | 200 | At least one primary channel succeeded, or the primary group failed and a fallback succeeded |
 | 204 | The inbound adapter produced no message (e.g. an empty alert group) |
 | 400, 401, 404, 405, 413 | The request is wrong; retrying will not help |
-| 502 | Every channel failed; retry |
+| 502 | Every channel in `channels` and `fallback` failed; retry |
 
-200 and 502 list the outcome per channel, without any secret:
+200 and 502 list the outcome per channel, those in `also` included, without any secret:
 
 ```json
 {"messages": [{"delivered": ["loki"], "failed": [{"channel": "bark", "error": "timeout"}]}]}
