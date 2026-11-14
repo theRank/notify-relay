@@ -8,7 +8,6 @@ const WORD_BYTES = 39
 // ASCII only: an SMTP envelope without SMTPUTF8 carries nothing else
 const PART = String.raw`(?:(?![<>",@])[!-~])+`
 const ADDRESS = new RegExp(`^${PART}@${PART}$`)
-const MAILBOX = new RegExp(String.raw`^(.*?)\s*<(${PART}@${PART})>$`)
 const DOMAIN = new RegExp(`^\\*@${PART}$`)
 
 export interface Addressing {
@@ -96,12 +95,24 @@ function parseAddresses(value: string): { name: string; address: string }[] | un
             parsed.push({ name: '', address: trimmed })
             continue
         }
-        const [, raw, address] = MAILBOX.exec(trimmed) ?? []
-        const name = raw === undefined ? undefined : unquote(raw)
-        if (name === undefined || address === undefined) return undefined
-        parsed.push({ name, address })
+        const mailbox = parseMailbox(trimmed)
+        if (mailbox === undefined) return undefined
+        parsed.push(mailbox)
     }
     return parsed
+}
+
+// `name <address>`, cut at the last '<' rather than matched by a pattern: one that tries every length of
+// the name takes time that grows with the square of a long run of spaces
+function parseMailbox(value: string): { name: string; address: string } | undefined {
+    const open = value.lastIndexOf('<')
+    if (open < 0 || !value.endsWith('>')) return undefined
+    const address = value.slice(open + 1, -1)
+    const raw = value.slice(0, open).trimEnd()
+    // A line break may fold the header before the address, but a name holds none
+    if (!ADDRESS.test(address) || /[\r\n\u2028\u2029]/.test(raw)) return undefined
+    const name = unquote(raw)
+    return name === undefined ? undefined : { name, address }
 }
 
 function parseAllowlist(value: string): ((address: string) => boolean) | undefined {
