@@ -1,4 +1,5 @@
 import { type AppDeps, handle } from '../app'
+import { logLine } from '../core/log'
 import { unsupported } from './method'
 import { connector } from './node/connect'
 import { ORIGIN } from './origin'
@@ -47,4 +48,5 @@ export const handler = lambda(process.env, {
     connect: connector(),
     now: () => Date.now(),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    log: logLine,
 })

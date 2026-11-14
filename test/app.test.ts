@@ -13,6 +13,7 @@ const env = {
 function setup(lokiStatus = 204, overrides: Record<string, string | undefined> = {}) {
     const pushed: unknown[] = []
     const urls: string[] = []
+    const logged: { level: string; entry: object }[] = []
     const deps = {
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
             const request = new Request(input, init)
@@ -25,10 +26,11 @@ function setup(lokiStatus = 204, overrides: Record<string, string | undefined> =
         },
         now: () => 1_760_000_000_000,
         sleep: async () => {},
+        log: (level: string, entry: object) => void logged.push({ level, entry }),
     }
     const send = (path: string, init: RequestInit = {}) =>
         handle(new Request(`https://notify.example${path}`, init), { ...env, ...overrides }, deps)
-    return { pushed, urls, send }
+    return { pushed, urls, logged, send }
 }
 
 const authorized = (body: unknown, token = 'nr_github'): RequestInit => ({
@@ -146,6 +148,100 @@ describe('POST /webhook', () => {
     })
 })
 
+describe('the line logged for a request', () => {
+    const archive = {
+        CHANNEL_ARCHIVE_TYPE: 'loki',
+        CHANNEL_ARCHIVE_URL: 'https://archive.example/loki/api/v1/push',
+        CHANNEL_ARCHIVE_USER: '654321',
+        // Missing its token, so it fails without being called
+    }
+
+    it('says who sent what where, and that it arrived', async () => {
+        const { logged, send } = setup()
+        await send('/webhook?channels=loki', authorized({ title: 'x' }))
+        expect(logged).toEqual([
+            { level: 'info', entry: { path: '/webhook', status: 200, source: 'github', messages: [{ delivered: ['loki'], failed: [] }] } },
+        ])
+    })
+
+    it('is an error when the message arrived nowhere', async () => {
+        const { logged, send } = setup(500)
+        await send('/webhook?channels=loki', authorized({ title: 'x' }))
+        expect(logged).toEqual([
+            {
+                level: 'error',
+                entry: { path: '/webhook', status: 502, source: 'github', messages: [{ delivered: [], failed: [{ channel: 'loki', error: 'HTTP 500' }] }] },
+            },
+        ])
+    })
+
+    // Which the sender may never read: the status is 200
+    it('is a warning when a channel failed though the message arrived', async () => {
+        const { logged, send } = setup(204, archive)
+        const response = await send('/webhook?channels=loki&also=archive', authorized({ title: 'x' }))
+        expect(response.status).toBe(200)
+        expect(logged).toEqual([
+            {
+                level: 'warn',
+                entry: {
+                    path: '/webhook',
+                    status: 200,
+                    source: 'github',
+                    messages: [{ delivered: ['loki'], failed: [{ channel: 'archive', error: 'missing TOKEN' }] }],
+                },
+            },
+        ])
+    })
+
+    it('has no messages for a notification that held none', async () => {
+        const { logged, send } = setup()
+        await send('/alertmanager?channels=loki', authorized({ alerts: [] }))
+        expect(logged).toEqual([{ level: 'info', entry: { path: '/alertmanager', status: 204, source: 'github' } }])
+    })
+
+    it('is a warning with the reason for a request that was refused', async () => {
+        const { logged, send } = setup(204, { TOKEN_GRAFANA: 'nr_grafana', ALLOW_GRAFANA_CHANNELS: '' })
+        await send('/webhook?channels=pager', authorized({ title: 'x' }))
+        await send('/webhook?channels=loki', authorized({ title: 'x' }, 'nr_grafana'))
+        await send('/webhook?channels=loki', { ...authorized(null), body: 'x'.repeat(64 * 1024 + 1) })
+        expect(logged).toEqual([
+            { level: 'warn', entry: { path: '/webhook', status: 400, source: 'github', error: "unknown channel 'pager'" } },
+            { level: 'warn', entry: { path: '/webhook', status: 403, source: 'grafana', error: "'loki' is not a channel this token may use" } },
+            { level: 'warn', entry: { path: '/webhook', status: 413, source: 'github' } },
+        ])
+    })
+
+    it('names no source for a caller without a token', async () => {
+        const { logged, send } = setup()
+        await send('/webhook?channels=loki', authorized({ title: 'x' }, 'nr_wrong'))
+        expect(logged).toEqual([{ level: 'warn', entry: { path: '/webhook', status: 401 } }])
+    })
+
+    it('cuts a reason that quotes much of the request', async () => {
+        const { logged, send } = setup()
+        await send('/webhook?channels=loki', authorized({ title: 'x', ['f'.repeat(5000)]: 1 }))
+        const { error } = logged[0]!.entry as { error: string }
+        expect(error.startsWith("unknown field 'fff")).toBe(true)
+        expect(error).toHaveLength(200)
+    })
+
+    it('holds nothing of the message, nor a token', async () => {
+        const { logged, send } = setup(500)
+        await send('/webhook?channels=loki', authorized({ title: 'payroll', text: 'salaries', url: 'https://hr.example/run', group: 'finance', key: 'k-1' }))
+        await send('/webhook?channels=loki', authorized({ title: 'payroll' }, 'nr_guessed'))
+        const text = JSON.stringify(logged)
+        for (const kept of ['payroll', 'salaries', 'hr.example', 'finance', 'k-1', 'nr_github', 'nr_guessed', 'glc_secret']) expect(text).not.toContain(kept)
+    })
+
+    it('is not written for the health check, an unknown path or a wrong method', async () => {
+        const { logged, send } = setup()
+        await send('/healthz')
+        await send('/nope', authorized({ title: 'x' }))
+        await send('/webhook?channels=loki', { method: 'GET' })
+        expect(logged).toEqual([])
+    })
+})
+
 describe('channels that get a copy, named in also', () => {
     const archive = {
         CHANNEL_ARCHIVE_TYPE: 'loki',
@@ -162,6 +258,7 @@ describe('channels that get a copy, named in also', () => {
             },
             now: () => 1_760_000_000_000,
             sleep: async () => {},
+            log: () => {},
         }
         return handle(new Request(`https://notify.example${path}`, authorized({ title: 'x' })), { ...env, ...archive }, deps)
     }
@@ -291,6 +388,7 @@ describe('recipients a message names in to', () => {
             },
             now: () => 1_760_000_000_000,
             sleep: async () => {},
+            log: () => {},
         }
         const channels = { ...env, ...mail('MAIL', 'me@example.com'), ...mail('SPARE', 'spare@example.com'), ...extra }
         const send = (path: string, body: unknown) =>

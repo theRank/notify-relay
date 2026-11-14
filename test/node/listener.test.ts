@@ -30,6 +30,7 @@ async function serve(config: object = env) {
         },
         now: () => 1_760_000_000_000,
         sleep: async () => {},
+        log: () => {},
     }
     const server = createServer(listener(config, deps))
     servers.push(server)

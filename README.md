@@ -158,8 +158,33 @@ request; the caller retries.
 answers 200 when at least one channel is configured, every configured channel has a known type and all of
 that type's required parameters, at least one source token exists, and every
 [list of channels](#authentication) is for a source with a token and names configured channels; 503
-otherwise, without saying what is missing. Channel types nobody configured are not checked. Deploys do not check settings (see
-[Platforms](#platforms)), so point an external probe here.
+otherwise, without saying what is missing. Channel types nobody configured are not checked. Deploys do
+not check settings (see [Platforms](#platforms)), so point an external probe here.
+
+### Logs
+
+A request to `/webhook` or `/alertmanager` leaves one line, which says who sent it where and how it
+ended, and nothing of the message:
+
+```json
+{"path":"/webhook","status":200,"source":"github","messages":[{"delivered":["discord"],"failed":[{"channel":"loki","error":"timeout"}]}]}
+```
+
+| Field | Value |
+|---|---|
+| `path` | The endpoint |
+| `status` | The status answered |
+| `source` | The source of the token; left out for a 401 |
+| `error` | The reason of a 400 or 403, cut at 200 characters, as it may quote the request |
+| `messages` | The outcome per channel, as in the response; left out when nothing was sent |
+
+- The level is error for a 502, warning for any other refusal and for a 200 with a channel that failed,
+  and info otherwise. A failed channel behind a 200, such as a copy in `also`, is one the sender may
+  never see, so this is where to look for it.
+- `/healthz`, unknown paths and wrong methods leave no line.
+- On Cloudflare the line is an object in [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/),
+  with these fields to query by. Elsewhere it is a line of JSON on the standard output, or the standard
+  error for a warning or an error, wherever the platform takes those.
 
 ## Authentication
 
@@ -538,6 +563,9 @@ npx wrangler secret put TOKEN_GITHUB
   (dashboard, Terraform, or `routes` in your own config); deploys then leave it alone.
 - A custom domain answers plain HTTP too, and passes it to the Worker, unless the zone's *Always Use
   HTTPS* is on.
+- `observability` is on, so Cloudflare keeps the [logs](#logs), and a line of its own per invocation
+  with the URL: the query names channels, and tokens travel in a header. Turn it off in a config of your
+  own to keep nothing.
 
 ### Node
 

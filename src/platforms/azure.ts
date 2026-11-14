@@ -1,6 +1,7 @@
 // Bundled as CommonJS: the library requires @azure/functions-core, which the worker provides, and in an ES
 // module bundle that require fails quietly, leaving the library in a test mode that registers nothing
 import { app } from '@azure/functions'
+import { logLine } from '../core/log'
 import { azure } from './azure/handler'
 import { connector } from './node/connect'
 
@@ -16,5 +17,6 @@ app.http('relay', {
         connect: connector(),
         now: () => Date.now(),
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        log: logLine,
     }),
 })
