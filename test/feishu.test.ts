@@ -115,7 +115,6 @@ describe('feishu', () => {
         expect(body).not.toHaveProperty('sign')
     })
 
-    // Feishu answers 200 for a post it refused, with the reason in code
     it.each([
         [19021, 'sign match fail or timestamp is not within one hour from current time'],
         [19022, 'ip not allowed'],

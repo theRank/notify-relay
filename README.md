@@ -218,11 +218,9 @@ ALLOW_GRAFANA_CHANNELS=discord,loki   # variable
 - A request naming any other channel, in `channels`, `fallback` or `also`, is a 403 and delivers
   nothing. It is the same 403 whether that channel exists, so the token does not tell which others the
   deployment has.
-- A list that is set and empty admits nothing. A source without a list is held to none, so a token meant
-  for one channel needs its list; `/healthz` answers 503 for a list whose source has no token, as a
-  misspelt name would otherwise leave the source free without a sign, and for one naming a channel that
-  is not configured.
-- The list is not under `TOKEN_`, where it would be taken for a token.
+- A list that is set and empty admits nothing.
+- `/healthz` answers 503 for a list whose source has no token, as a misspelt name would otherwise leave
+  the source free without a sign, and for one naming a channel that is not configured.
 - It is about channels only. Whom a mail channel may write to is that channel's `ALLOW_TO`.
 
 ## Channels
@@ -251,6 +249,10 @@ CHANNEL_LOGS_TOKEN=...                  # secret
 CHANNEL_ARCHIVE_TYPE=loki               # a second channel of the same type
 ...
 ```
+
+A delivery that fails says why in a few words, such as `HTTP 400` or `timeout`, and never in the text
+the channel's server answered with, which could quote a secret or the message. A type that says more is
+described as doing so.
 
 ### `loki`
 
@@ -287,7 +289,7 @@ Each message opens its own connection and authenticates with `AUTH PLAIN` over T
 `TO` and recipients in `to` are one address or several, comma-separated, and `FROM` exactly one; each is
 `address` or `Name <address>`, with a name holding a comma in double quotes. Names may be in any script;
 addresses are ASCII, so an internationalised domain goes in its `xn--` form. A rejected SMTP step fails
-delivery as e.g. `SMTP 535 on AUTH`, without the server's text, which can quote an address.
+delivery as e.g. `SMTP 535 on AUTH`.
 
 With a mailbox provider, send from an account of its own: an app password usually opens the whole
 mailbox over IMAP too, not only sending.
@@ -350,8 +352,7 @@ by group, and a message with the same `key` replaces the notification.
   bark-server 2.2.5 or later.
 - Apple takes at most 4 KB per push, so a longer message fails, as `HTTP 500`; encrypted, about a quarter
   less fits.
-- A refused push fails as e.g. `HTTP 400`, without the server's text, which can name the key. A wrong
-  `ENCRYPTION` or `ENCRYPTION_KEY` fails without pushing.
+- A wrong `ENCRYPTION` or `ENCRYPTION_KEY` fails without pushing.
 
 ### `ntfy`
 
@@ -375,7 +376,6 @@ the notification. `group` is not used.
   later.
 - iOS gets instant notifications through ntfy.sh's push relay, also for a server of your own, which then
   passes ntfy.sh only the message's ID.
-- A refused publish fails as e.g. `HTTP 403`, without the server's text.
 
 ### `slack`
 
@@ -392,8 +392,7 @@ to.
 | `URL` | secret | The webhook URL, `https://hooks.slack.com/services/...`. Whoever has it can post to the channel |
 
 - Slack refuses a header over 150 characters, and `text` or `rich` over 3,000.
-- Slack takes about one post a second per webhook. A 429 is retried as for every channel.
-- A refused post fails as e.g. `HTTP 400`, without Slack's text.
+- Slack takes about one post a second per webhook.
 
 ### `discord`
 
@@ -419,12 +418,11 @@ desktop notification. `key` and `group` are not used.
 - Discord refuses a title over 256 characters and a description over 4,096; the escapes in the title
   and `text` count.
 - Members who turned off *Show embeds and preview website links* in their settings see the post empty.
-- A 429 is retried as for every channel. Discord also blocks, for a while, an IP address that makes too
-  many refused requests, and a Worker shares its addresses with others, so it may meet a 429 it did not
-  cause; the container on a host of its own avoids that.
+- Discord blocks, for a while, an IP address that makes too many refused requests, and a Worker shares
+  its addresses with others, so it may meet a 429 it did not cause; the container on a host of its own
+  avoids that.
 - A deleted webhook answers `HTTP 404`, and posting to it again and again gets the address blocked too,
   so remove a channel whose webhook is gone.
-- A refused post fails as e.g. `HTTP 400`, without Discord's text.
 
 ### `feishu`
 
@@ -487,8 +485,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getUpdates" | grep -o '"chat":{"id":
 - A message without `rich` takes 4,096 characters, and is refused over that as
   `HTTP 400 (message is too long)`. A rich message takes 32,768, but Telegram cuts one over about 35,000
   bytes without saying so: some 11,000 Chinese characters.
-- Telegram takes about a message a second per chat and 20 a minute per group. A 429 is retried as for
-  every channel.
+- Telegram takes about a message a second per chat and 20 a minute per group.
 - `api.telegram.org` is blocked in some countries, mainland China among them. A proxy in `SERVER` sees
   the token and every message.
 - A refused message fails as e.g. `HTTP 400 (chat not found)` or `HTTP 403 (bot was blocked by the
@@ -537,8 +534,7 @@ new Webhook(secret).verify(body, headers) // throws unless the post is genuine; 
   the ID does not tell a repeat; `key` does, when the sender sets one.
 - The body grows with the message format (see [Contract](#contract)), so ignore fields you do not know.
 - Over `http://`, the message and the token cross in the clear.
-- A refused post fails as e.g. `HTTP 400`, without the receiver's text. A `SECRET` that is not base64 or
-  shorter than 24 bytes fails every post, without posting.
+- A `SECRET` that is not base64 or shorter than 24 bytes fails every post, without posting.
 
 ## Platforms
 
@@ -715,38 +711,50 @@ npm run build       # bundles for Workers (wrangler deploy --dry-run, no credent
 npm run dev         # a local Worker
 ```
 
-`worker-configuration.d.ts` is generated by `wrangler types` and not committed, since it changes with
-every wrangler release. Outbound adapters get `fetch` and `connect` passed in, so tests assert on what a
-fake `fetch` or a scripted fake server receives instead of mocking globals. The Node tests need `openssl`
-on the path, to make a throwaway certificate. `test/docker/smoke.sh <image>` runs a built image as a
-deployment would and checks it serves, runs as a user other than root, passes its `HEALTHCHECK` and stops
-cleanly on `docker stop`. `test/lambda/smoke.sh [dist/lambda]` runs the Lambda bundle in AWS's Node 24
-base image, whose Runtime Interface Emulator invokes it as Lambda would. `test/azure/smoke.sh
-[dist/azure]` runs the Azure package in Microsoft's Functions host image for Node 24, with bodies sent
-with a length and chunked, and one past the host's limit.
+- `worker-configuration.d.ts` is generated by `wrangler types` and not committed, since it changes with
+  every wrangler release.
+- Outbound adapters get `fetch` and `connect` passed in, so tests assert on what a fake `fetch` or a
+  scripted fake server receives instead of mocking globals.
+- The Node tests need `openssl` on the path, to make a throwaway certificate.
+- `test/docker/smoke.sh <image>` runs a built image as a deployment would and checks it serves, runs as a
+  user other than root, passes its `HEALTHCHECK` and stops cleanly on `docker stop`.
+- `test/lambda/smoke.sh [dist/lambda]` runs the Lambda bundle in AWS's Node 24 base image, whose Runtime
+  Interface Emulator invokes it as Lambda would.
+- `test/azure/smoke.sh [dist/azure]` runs the Azure package in Microsoft's Functions host image for
+  Node 24, with bodies sent with a length and chunked, and one past the host's limit.
 
-`npm run test:live` sends through real channels instead: a Loki push that it then reads back, an ntfy
-message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID, a signed
-webhook post to the same topic, which ntfy keeps as the message, read back as the JSON sent, mail to one
-SMTP server, plain text over 587 and HTML over 465, and HTML mail through the Gmail API. Mail passes once
-it shows up in the recipients' mailbox, among the newest mail read over IMAP on 993, so `LIVE_SMTP_TO`
-and `LIVE_GMAIL_TO` must both deliver there. That mailbox may be the sender's own: folders that may hold
-the sender's copy (sent, drafts, trash, and virtual ones such as all mail) are skipped. Landing in junk
-still passes, with a warning. It also checks that the relay refuses a request without a token and a body
-over 64 KB, and takes one sent chunked. Each body links the commit and the run. It needs `LIVE_LOKI_URL`,
-`LIVE_LOKI_USER` and `LIVE_LOKI_TOKEN` (`logs:write` and `logs:read`); `LIVE_SMTP_HOST`,
-`LIVE_SMTP_USER`, `LIVE_SMTP_PASSWORD`, `LIVE_SMTP_FROM` and `LIVE_SMTP_TO`; `LIVE_GMAIL_CLIENT_ID`,
-`LIVE_GMAIL_CLIENT_SECRET`, `LIVE_GMAIL_REFRESH_TOKEN`, `LIVE_GMAIL_FROM` and `LIVE_GMAIL_TO`; and
-`LIVE_IMAP_HOST`, `LIVE_IMAP_USER` and `LIVE_IMAP_PASSWORD`. With `LIVE_BARK_KEY` set, it also pushes
-through Bark to that device, in a group of its own; nothing reads the push back, so the test passes once
-Bark's server accepts it, and the phone shows the rest. With `LIVE_BARK_ENCRYPTION` and
-`LIVE_BARK_ENCRYPTION_KEY` too, as set in the app, a second push goes encrypted, as `bark-sealed`; the
-phone shows *Decryption Failed* if it cannot decrypt it. With `LIVE_SLACK_URL`, it posts mrkdwn and a
-link to that webhook's channel, with `LIVE_DISCORD_URL` an embed with Markdown, and with
-`LIVE_FEISHU_URL` a card with Markdown to that bot's group, signed with `LIVE_FEISHU_SECRET` when the
-bot verifies signatures; with `LIVE_TELEGRAM_TOKEN` and `LIVE_TELEGRAM_CHAT`, it sends that chat a
-message and, silently, a rich message with a table; likewise, only the channel shows the result. With
-`LIVE_IMAGE` naming an image, the relay under test is a container of it, given the same settings,
+`npm run test:live` sends through real channels instead, and reads back what it can:
+
+| Channel | What it sends and reads back | Needs |
+|---|---|---|
+| `loki` | A push, read back by query | `LIVE_LOKI_URL`, `LIVE_LOKI_USER`, `LIVE_LOKI_TOKEN` (`logs:write` and `logs:read`) |
+| `ntfy` | A message on a fresh topic on ntfy.sh, read back with its priority, Markdown and sequence ID | |
+| `webhook` | A signed post to the same topic, which ntfy keeps as the message, read back as the JSON sent | |
+| `smtp` | Mail to one server, plain text over 587 and HTML over 465 | `LIVE_SMTP_HOST`, `LIVE_SMTP_USER`, `LIVE_SMTP_PASSWORD`, `LIVE_SMTP_FROM`, `LIVE_SMTP_TO` |
+| `gmail` | HTML mail through the Gmail API | `LIVE_GMAIL_CLIENT_ID`, `LIVE_GMAIL_CLIENT_SECRET`, `LIVE_GMAIL_REFRESH_TOKEN`, `LIVE_GMAIL_FROM`, `LIVE_GMAIL_TO` |
+
+Mail passes once it shows up in the recipients' mailbox, among the newest mail read over IMAP on 993
+(`LIVE_IMAP_HOST`, `LIVE_IMAP_USER`, `LIVE_IMAP_PASSWORD`), so `LIVE_SMTP_TO` and `LIVE_GMAIL_TO` must
+both deliver there. That mailbox may be the sender's own: folders that may hold the sender's copy (sent,
+drafts, trash, and virtual ones such as all mail) are skipped. Landing in junk still passes, with a
+warning.
+
+It also checks that the relay refuses a request without a token and a body over 64 KB, and takes one
+sent chunked. Each body links the commit and the run.
+
+Channels nothing can be read back from are tested when their variables are set. The test passes once
+the channel's server accepts the message, and only the channel shows the rest:
+
+| Set | Sends |
+|---|---|
+| `LIVE_BARK_KEY` | A push to that device, in a group of its own |
+| `LIVE_BARK_ENCRYPTION` and `LIVE_BARK_ENCRYPTION_KEY` too, as set in the app | A second push, encrypted, as `bark-sealed`; the phone shows *Decryption Failed* if it cannot decrypt it |
+| `LIVE_SLACK_URL` | mrkdwn and a link, to that webhook's channel |
+| `LIVE_DISCORD_URL` | An embed with Markdown |
+| `LIVE_FEISHU_URL` | A card with Markdown to that bot's group, signed with `LIVE_FEISHU_SECRET` when the bot verifies signatures |
+| `LIVE_TELEGRAM_TOKEN` and `LIVE_TELEGRAM_CHAT` | A message and, silently, a rich message with a table |
+
+With `LIVE_IMAGE` naming an image, the relay under test is a container of it, given the same settings,
 instead of the Worker. The [Live](.github/workflows/live.yml) workflow runs it both ways on `main`,
 weekly and by hand.
 
@@ -777,9 +785,10 @@ The file holds every secret the live test has; delete it, and the deployment, wh
   that takes recipients implements `recipients(value, params)`, returning why it refuses an entry of
   `to`, and reads its own entry as `message.to?.[ctx.channel]`. `TYPE` is reserved.
 - Platform: add an entry under `src/platforms` that turns the platform's request into a `Request` and
-  calls `handle(request, env, deps)`, with the platform's settings as `env`, and `fetch`, `connect`, `now`
-  and `sleep` in `deps`. `connect` provides `Connection` from `src/core/deliver.ts`, the part of
-  Cloudflare's sockets API that `smtp` uses.
+  calls `handle(request, env, deps)`, with the platform's settings as `env`, and `fetch`, `connect`,
+  `now`, `sleep` and `log` in `deps`. `connect` provides `Connection` from `src/core/deliver.ts`, the
+  part of Cloudflare's sockets API that `smtp` uses; `log` is `logLine` from `src/core/log.ts` unless
+  the platform keeps what is logged as an object.
 
 ### Contract
 
