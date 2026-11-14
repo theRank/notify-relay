@@ -109,8 +109,9 @@ message, as a message per alert would repeat every alert of the group each time:
 - What the sender groups by, how often it repeats and whether it reports resolved alerts stay its own
   settings. The relay adds no grouping and removes no repeats.
 - The sender cannot be told to write less, so here, and only here, the relay shortens: the name is cut at
-  100 characters and an alert at 300, and the text lists the alerts that fit in 1,200, ending with
-  `… and 5 more` for the rest. Alerts the sender left out itself (`truncatedAlerts`) are counted in.
+  100 characters and an alert at 300, and the text lists the alerts that fit in 1,200 characters and
+  3,600 bytes, ending with `… and 5 more` for the rest. Alerts the sender left out itself
+  (`truncatedAlerts`) are counted in.
 - A notification without alerts is a 204. A body without an `alerts` array, or with an alert whose
   `status` is neither `firing` nor `resolved` or whose labels or annotations are not strings, is a 400.
 - An alert about the relay's own availability cannot arrive through the relay. Keep a second contact

@@ -5,8 +5,10 @@ import { LEVELS, type Draft, type Inbound, type Level } from '../core/message'
 // The sender cannot shorten what it sends, so the adapter does, to what every channel type takes
 const NAME_MAX = 100
 const ALERT_MAX = 300
+// Both, as channels count either: 1,200 characters of Chinese are 3,600 bytes, and of emoji 4,800
 const TEXT_MAX = 1200
-// Room kept in TEXT_MAX for the line that counts the alerts left out
+const TEXT_MAX_BYTES = 3600
+// Room kept in both for the line that counts the alerts left out
 const COUNT_MAX = 30
 
 const SEVERITIES: Record<string, Level> = { critical: 'critical', warning: 'high', info: 'normal' }
@@ -101,15 +103,18 @@ function describe(firing: Alert[], alerts: Alert[], truncated: unknown): string 
     // Firing first; in a group that still fires, the resolved ones say so
     const all = [...firing, ...resolved]
 
+    const encoder = new TextEncoder()
     const listed: string[] = []
-    let length = 0
+    let characters = 0
+    let bytes = 0
     for (const alert of all) {
         const mark = !alert.firing && firing.length > 0 ? '[resolved] ' : ''
         const entry = cut(mark + describeAlert(alert, telling), ALERT_MAX)
-        const added = [...entry].length + (listed.length > 0 ? 2 : 0)
-        if (length + added > TEXT_MAX - COUNT_MAX) break
+        const gap = listed.length > 0 ? 2 : 0
+        characters += [...entry].length + gap
+        bytes += encoder.encode(entry).length + gap
+        if (characters > TEXT_MAX - COUNT_MAX || bytes > TEXT_MAX_BYTES - COUNT_MAX) break
         listed.push(entry)
-        length += added
     }
     const left = all.length - listed.length + (typeof truncated === 'number' && truncated > 0 ? Math.floor(truncated) : 0)
     if (left > 0) listed.push(`… and ${left} more`)

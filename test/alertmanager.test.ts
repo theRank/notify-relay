@@ -180,6 +180,14 @@ describe('alertmanager', () => {
             expect(text.split('\n\n')).toEqual([...Array.from({ length: 4 }, () => 'x'.repeat(250)), '… and 26 more'])
         })
 
+        // ntfy takes 4,096 bytes, and a character may be four of them
+        it('fits the text in bytes as well as in characters', () => {
+            const alerts = Array.from({ length: 5 }, (_, i) => alert(`host-${i}`, { annotations: { summary: '🚨'.repeat(290) } }))
+            const text = only(group(alerts)).text!
+            expect(text.split('\n\n')).toEqual([...Array.from({ length: 3 }, () => '🚨'.repeat(290)), '… and 2 more'])
+            expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(3600)
+        })
+
         it('counts the alerts the sender left out too', () => {
             expect(only(group([alert('a', { annotations: { summary: 's' } })], { truncatedAlerts: 3 })).text).toBe('s\n\n… and 3 more')
         })
