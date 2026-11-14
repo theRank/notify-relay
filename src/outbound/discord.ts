@@ -43,8 +43,8 @@ const MARKUP = new RegExp(
         /(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])/,
         // ~~strikethrough~~ and ||spoiler||
         /~(?=~)|(?<=~)~|\|(?=\|)|(?<=\|)\|/,
-        // [masked](link)
-        /\[(?=[^\]\n]*\]\()/,
+        // Every [, of which escape() keeps the ones that open a [masked](link)
+        /\[/,
         // <@user>, <@&role>, <#channel>, <:emoji:1>, <a:emoji:1>, <t:0>, </command:1>, <id:home>, <https://...>
         /<(?=[@#:/]|a:|t:|id:|https?:)/,
         // # heading, -# subtext, - or + list, > and >>> quote, at the start of a line
@@ -58,5 +58,21 @@ const MARKUP = new RegExp(
 )
 
 function escape(text: string): string {
-    return text.replace(MARKUP, (match, link: string | undefined) => link ?? `\\${match}`)
+    const masked = maskedLinks(text)
+    return text.replace(MARKUP, (match, link: string | undefined, at: number) =>
+        link !== undefined || (match === '[' && !masked.has(at)) ? match : `\\${match}`,
+    )
+}
+
+// Where a [ opens a [masked](link): the next ] on its line has a ( after it. Read once from the end, as
+// looking ahead from each [ would read the line again for every one of them
+function maskedLinks(text: string): Set<number> {
+    const found = new Set<number>()
+    let linked = false
+    for (let i = text.length - 1; i >= 0; i--) {
+        if (text[i] === '\n') linked = false
+        else if (text[i] === ']') linked = text[i + 1] === '('
+        else if (text[i] === '[' && linked) found.add(i)
+    }
+    return found
 }

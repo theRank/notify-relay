@@ -28,7 +28,7 @@ describe('/healthz', () => {
     it('rejects other methods', async () => {
         const response = await call('POST', '/healthz')
         expect(response.status).toBe(405)
-        expect(response.headers.get('allow')).toBe('GET')
+        expect(response.headers.get('allow')).toBe('GET, HEAD')
     })
 })
 

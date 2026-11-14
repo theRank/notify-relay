@@ -40,8 +40,11 @@ function level(value: unknown): Level {
 }
 
 function https(value: unknown): string {
-    if (typeof value === 'string' && URL.canParse(value) && new URL(value).protocol === 'https:') return value
-    throw new BadRequest('url must be https')
+    if (typeof value !== 'string' || !URL.canParse(value) || new URL(value).protocol !== 'https:') throw new BadRequest('url must be https')
+    // A URL parser drops these around a link and within it, so one that parses may still be no link to a
+    // channel, which gets it as written
+    if (/[\s\0-\x1f\x7f]/.test(value)) throw new BadRequest('url must not contain whitespace or control characters')
+    return value
 }
 
 function recipients(value: unknown): Record<string, string> {

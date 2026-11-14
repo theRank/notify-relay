@@ -51,7 +51,7 @@ names are the deployment's own (see [Channels](#channels)), not channel types.
 | `text` | no | Plain text |
 | `rich` | no | Formatted text in the channel's own markup: HTML for `smtp` and `gmail`, mrkdwn for `slack`, Markdown where a channel renders it |
 | `level` | no | `low`, `normal` (default), `high` or `critical`. How loudly each channel notifies, never which channels |
-| `url` | no | A link back to the source; https only |
+| `url` | no | A link back to the source; https only, with no whitespace or control characters in it |
 | `key` | no | On channels that support it, a new message with the same key replaces the previous one |
 | `group` | no | Display grouping |
 | `to` | no | Recipients by channel name, e.g. `{"mail": "ops@example.com"}`; see [Recipients](#recipients) |
@@ -107,11 +107,11 @@ request; the caller retries.
 
 ### Health
 
-`GET /healthz` needs no token and calls no channel. It answers 200 when at least one channel is
-configured, every configured channel has a known type and all of that type's required parameters, and at
-least one source token exists; 503 otherwise, without saying what is missing. Channel types nobody
-configured are not checked. Deploys do not check settings (see [Platforms](#platforms)), so point an
-external probe here.
+`GET /healthz` needs no token and calls no channel; `HEAD` gets the same status without the body. It
+answers 200 when at least one channel is configured, every configured channel has a known type and all of
+that type's required parameters, and at least one source token exists; 503 otherwise, without saying what
+is missing. Channel types nobody configured are not checked. Deploys do not check settings (see
+[Platforms](#platforms)), so point an external probe here.
 
 ## Authentication
 
@@ -147,6 +147,9 @@ CHANNEL_<NAME>_<PARAM>  one per parameter of that type; optional ones may be lef
 The channel's name is `<NAME>` in lowercase with `_` turned into `-`, so `CHANNEL_HOME_LAB_TYPE` declares
 `home-lab`, used as `?channels=home-lab`. Parameters are looked up by their exact names. The relay reads
 variables and secrets alike; keep the sensitive parameters as secrets.
+
+A name must not continue another channel's name with the start of one of its parameters, as the two would
+then share a variable: `CHANNEL_MAIL_ALLOW_TO` is `ALLOW_TO` of `mail` and `TO` of `mail-allow` alike.
 
 ```text
 CHANNEL_LOGS_TYPE=loki                  # variable

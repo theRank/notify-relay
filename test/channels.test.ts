@@ -93,6 +93,11 @@ describe('resolveChannels', () => {
         expect(channels.get('pager')).toEqual({ name: 'pager', type: 'pagerduty', params: {}, missing: [] })
     })
 
+    it.each(['toString', 'constructor', '__proto__'])('takes %s, which every object has, for an unknown type as well', (type) => {
+        const channels = resolveChannels({ CHANNEL_PAGER_TYPE: type }, adapters)
+        expect(channels.get('pager')).toEqual({ name: 'pager', type, params: {}, missing: [] })
+    })
+
     it('ignores everything that does not declare a channel', () => {
         const channels = resolveChannels(
             { TOKEN_GITHUB: 'nr_x', CHANNEL_LOKI_URL: 'https://logs.example/push', CHANNEL_TYPE: 'loki', OTHER: 1 },

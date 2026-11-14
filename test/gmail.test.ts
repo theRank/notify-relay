@@ -136,6 +136,16 @@ describe('gmail', () => {
         for (const line of lines) expect(line.length).toBeLessThanOrEqual(76)
     })
 
+    it.each([
+        ['spaces', 'Ops    <ops@example.com>', '"Ops" <ops@example.com>'],
+        ['a folded line', 'Ops\r\n <ops@example.com>', '"Ops" <ops@example.com>'],
+        ['an angle bracket in the name', 'a<b <ops@example.com>', '"a<b" <ops@example.com>'],
+    ])('takes %s between a name and its address', async (_, TO, expected) => {
+        const { requests, ctx } = fake(granted())
+        await gmail.send(message, { ...params, TO }, ctx)
+        expect((await sentMail(requests[1]!)).headers.to).toBe(expected)
+    })
+
     it('splits a long encoded name across lines', async () => {
         const name = '家庭实验室的通知机器人'.repeat(4)
         const { requests, ctx } = fake(granted())
@@ -154,6 +164,8 @@ describe('gmail', () => {
         ['TO', 'Jane "JD" Doe <jane@example.com>'],
         ['FROM', 'Relay\r\nBcc: spy@example.com <relay@example.com>'],
         ['FROM', 'Relay <relay@example.com'],
+        ['FROM', 'Relay <relay@example.com>>'],
+        ['TO', 'Ops\u2028Bcc <ops@example.com>'],
         ['FROM', 'a@example.com, b@example.com'],
         ['TO', 'you@typo@example.com'],
         ['TO', 'Ops <ops@typo@example.com>'],

@@ -51,6 +51,19 @@ describe('webhook', () => {
         expect(() => webhook.parse({ title: 'x', url: 'not a url' })).toThrow('url must be https')
     })
 
+    // A URL parser drops these before it reads the link, but the channels get the link as the sender wrote it
+    it.each([' https://example.com', 'https://example.com\n', 'ht\ntps://example.com', 'https://example.com/a b', 'https://example.com/a\tb', '\u0000https://example.com', 'https://example.com/\u007f', 'https://example.com/\u00a0', 'https://example.com/\u2028'])(
+        'refuses a link with whitespace or a control character in it: %j',
+        (url) => {
+            expect(() => webhook.parse({ title: 'x', url })).toThrow('url must not contain whitespace or control characters')
+        },
+    )
+
+    it('keeps a link as written, non-ASCII and all', () => {
+        const url = 'https://example.com/路径?q=é#片段'
+        expect(webhook.parse({ title: 'x', url })).toEqual([{ title: 'x', level: 'normal', url }])
+    })
+
     it('checks the optional strings', () => {
         expect(() => webhook.parse({ title: 'x', text: 1 })).toThrow('text must be a string')
         expect(() => webhook.parse({ title: 'x', rich: [] })).toThrow('rich must be a string')

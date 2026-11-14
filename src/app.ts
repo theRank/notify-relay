@@ -22,8 +22,9 @@ const inbounds: Record<string, Inbound> = { '/webhook': webhook }
 export async function handle(request: Request, env: object, deps: AppDeps): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/healthz') {
-        if (request.method !== 'GET') return methodNotAllowed('GET')
-        return ready(resolveChannels(env, adapters), env) ? new Response('ok') : new Response('not ready', { status: 503 })
+        if (request.method !== 'GET' && request.method !== 'HEAD') return methodNotAllowed('GET, HEAD')
+        const answer = ready(resolveChannels(env, adapters), env) ? { body: 'ok', status: 200 } : { body: 'not ready', status: 503 }
+        return new Response(request.method === 'HEAD' ? null : answer.body, { status: answer.status })
     }
 
     const inbound = inbounds[url.pathname]

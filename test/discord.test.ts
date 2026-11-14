@@ -122,6 +122,23 @@ describe('discord', () => {
         expect((await posted('x', text)).description).toBe('logs at https://example.com/run_1/*_x?a=b~~c for \\*run_1\\*')
     })
 
+    it('escapes a bracket only when the next ] on its line opens a link', async () => {
+        const text = ['[a [b](c)', '[a] [b](c)', '[a](b) [c]', '[a', '](b)', '[a]'].join('\n')
+        expect((await posted('x', text)).description).toBe(['\\[a \\[b](c)', '[a] \\[b](c)', '\\[a](b) [c]', '[a', '](b)', '[a]'].join('\n'))
+    })
+
+    // The escape runs without a pause, where the relay's timeout cannot interrupt it
+    it.each([
+        ['brackets', '['.repeat(60_000)],
+        ['spaces', ' '.repeat(60_000)],
+        ['digits', '1'.repeat(60_000)],
+        ['quotes', '> '.repeat(30_000)],
+    ])('escapes a long text of nothing but %s in time that grows with its length', async (_, text) => {
+        const started = performance.now()
+        await posted('x', text)
+        expect(performance.now() - started).toBeLessThan(1000)
+    })
+
     it.each<[Level, number]>([
         ['low', 0x95a5a6],
         ['normal', 0x3498db],

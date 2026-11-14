@@ -1,15 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type AppDeps, handle } from '../../app'
+import { unsupported } from '../method'
 import { ORIGIN } from '../origin'
 import { fromNode, type Source } from './readable'
 
 export function listener(env: object, deps: AppDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
     return async (req, res) => {
         const method = req.method ?? 'GET'
-        const body = method === 'GET' || method === 'HEAD' ? undefined : fromNode(req, () => {})
+        const refused = unsupported(method)
+        const body = refused || method === 'GET' || method === 'HEAD' ? undefined : fromNode(req, () => {})
         let response: Response
         try {
-            response = await handle(toRequest(req, method, body), env, deps)
+            response = refused ?? (await handle(toRequest(req, method, body), env, deps))
         } catch (error) {
             console.error(error)
             response = new Response(null, { status: 500 })

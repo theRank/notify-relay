@@ -211,6 +211,15 @@ describe('recipients a message names in to', () => {
         expect(requests).toEqual([])
     })
 
+    // Parsing runs without a pause, so nothing could cut it short
+    it('refuses recipients that are mostly spaces in time that grows with their length', async () => {
+        const { send } = setup({ CHANNEL_MAIL_ALLOW_TO: '*' })
+        const started = performance.now()
+        const response = await send('/webhook?channels=mail', { title: 'x', to: { mail: `a${' '.repeat(60_000)}b` } })
+        expect(response.status).toBe(400)
+        expect(performance.now() - started).toBeLessThan(1000)
+    })
+
     it('leaves a malformed ALLOW_TO to delivery, since only the operator can fix it', async () => {
         const { requests, send } = setup({ CHANNEL_MAIL_ALLOW_TO: 'example.org' })
         const response = await send('/webhook?channels=mail', { title: 'x', to: { mail: 'a@example.org' } })
@@ -240,6 +249,26 @@ describe('GET /healthz', () => {
     it('is 503 while a channel has a type the relay does not know', async () => {
         const { send } = setup(204, { CHANNEL_PAGER_TYPE: 'pagerduty' })
         expect((await send('/healthz')).status).toBe(503)
+    })
+
+    it.each(['toString', 'constructor', '__proto__'])('is 503 while a channel has the type %s, which every object has but no adapter is', async (type) => {
+        const { send } = setup(204, { CHANNEL_PAGER_TYPE: type })
+        expect((await send('/healthz')).status).toBe(503)
+    })
+
+    it('answers HEAD as it does GET, without the body', async () => {
+        const ready = await setup().send('/healthz', { method: 'HEAD' })
+        expect(ready.status).toBe(200)
+        expect(await ready.text()).toBe('')
+        const missing = await setup(204, { CHANNEL_LOKI_TOKEN: undefined }).send('/healthz', { method: 'HEAD' })
+        expect(missing.status).toBe(503)
+        expect(await missing.text()).toBe('')
+    })
+
+    it('takes no other method', async () => {
+        const response = await setup().send('/healthz', { method: 'POST' })
+        expect(response.status).toBe(405)
+        expect(response.headers.get('allow')).toBe('GET, HEAD')
     })
 
     it('is 503 with no channel at all', async () => {
