@@ -46,7 +46,6 @@ describe('ntfy', () => {
         expect(requests).toHaveLength(1)
         const request = requests[0]!
         expect(request.method).toBe('POST')
-        // JSON goes to the root, which keeps a title in any script out of the headers
         expect(request.url).toBe('https://ntfy.sh/')
         expect(request.headers.get('content-type')).toBe('application/json')
         expect(request.headers.get('authorization')).toBeNull()

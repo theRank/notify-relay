@@ -145,7 +145,6 @@ describe('telegram', () => {
         expect(requests[0]!.url).toBe(`${base}/bot${TOKEN}/sendMessage`)
     })
 
-    // fetch would name the whole URL in its error, token and all
     it.each(['api.telegram.org', 'ftp://tg.example.com', 'https://'])('fails without sending, or naming the token, when SERVER is %s', async (SERVER) => {
         const { error, requests } = await failure(ok(), { SERVER })
         expect((error as Error).message).toBe('SERVER must be an http(s) URL')
@@ -175,7 +174,6 @@ describe('telegram', () => {
         }
     })
 
-    // ok decides, as the Bot API has it
     it.each([
         ['without error_code, by the status', { ok: false, description: 'Bad Request: chat not found' }, 400, 'HTTP 400 (chat not found)'],
         ['without a reason, by its code', { ok: false, error_code: 403 }, 403, 'HTTP 403'],

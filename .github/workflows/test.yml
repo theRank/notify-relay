@@ -2,10 +2,9 @@ name: Test
 
 # Runs on PRs and main: typecheck, tests on the Workers runtime and on Node, the bundles, the container
 # image on amd64 and arm64, the Lambda bundle in AWS's runtime and the Azure package in Microsoft's
-# Functions host, each run as a deployment would. The
-# typecheck is a separate step because esbuild strips types without checking them. Once the tests and
-# the image pass on main, the image is published to GHCR. Nothing here deploys; deployments pick a commit
-# or an image and run it themselves.
+# Functions host, each run as a deployment would. The typecheck is a separate step because esbuild strips
+# types without checking them. Once the tests and the image pass on main, the image is published to GHCR.
+# Nothing here deploys; deployments pick a commit or an image and run it themselves.
 
 on:
   pull_request:

@@ -49,7 +49,6 @@ describe('slack', () => {
         })
     })
 
-    // Incoming webhooks refuse a markdown block, so rich goes in a section as Slack's own mrkdwn
     it('shows rich as mrkdwn in place of the text, as written', async () => {
         const { requests, ctx } = capture(ok())
         await slack.send(

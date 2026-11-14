@@ -77,7 +77,6 @@ describe('discord', () => {
         return { title: embeds[0]!.title, description: embeds[0]!.description }
     }
 
-    // Discord renders Markdown in an embed's title and description alike
     it('escapes what Discord would render in the title and the text, so it shows as written', async () => {
         const text = [
             '# no heading',
@@ -110,7 +109,6 @@ describe('discord', () => {
         })
     })
 
-    // A push notification shows the title and the description raw, escapes and all
     it('leaves what Discord would not render, so a push shows it as written too', async () => {
         const title = '[prod] build_and_test failed: p99 < 200ms, ~5 | 6'
         const text = ['-5 degrees', '#123 failed', '>200 ms', '2.5 seconds', 'C:\\path\\to', '[a] [b]', 'a<b'].join('\n')

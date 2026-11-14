@@ -16,7 +16,6 @@ function sourceOf(id: string): string {
     return id.toLowerCase().replaceAll('_', '-')
 }
 
-// The sources that have a token
 export function sources(env: object): string[] {
     return Object.entries(env)
         .filter(([name, value]) => name.startsWith(PREFIX) && typeof value === 'string' && value.trim())

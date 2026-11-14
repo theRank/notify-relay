@@ -21,7 +21,6 @@ const MAX_BODY_BYTES = 64 * 1024
 
 const inbounds: Record<string, Inbound> = { '/webhook': webhook, '/alertmanager': alertmanager }
 
-// Token first: an unauthenticated caller learns nothing from validation and never has its body read
 export async function handle(request: Request, env: object, deps: AppDeps): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/healthz') {
@@ -58,6 +57,7 @@ type Seen = Pick<LogEntry, 'source' | 'error' | 'messages'>
 // A reason may quote the request, as an unknown field's name
 const ERROR_LOGGED = 200
 
+// Token first: an unauthenticated caller learns nothing from validation and never has its body read
 async function receive(request: Request, url: URL, inbound: Inbound, env: object, deps: AppDeps, seen: Seen): Promise<Response> {
     const refuse = (status: 400 | 403, error: string) => {
         seen.error = error.slice(0, ERROR_LOGGED)
