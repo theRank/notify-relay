@@ -2,6 +2,8 @@ export type LogLevel = 'info' | 'warn' | 'error'
 
 // What is said of a request: who sent it where and how it ended. Nothing of the message, nor a secret
 export interface LogEntry {
+    // The rest in a few words, for a list of lines that shows only this
+    message: string
     path: string
     status: number
     source?: string

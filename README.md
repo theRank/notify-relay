@@ -164,14 +164,15 @@ not check settings (see [Platforms](#platforms)), so point an external probe her
 ### Logs
 
 A request to `/webhook` or `/alertmanager` leaves one line, which says who sent it where and how it
-ended, and nothing of the message:
+ended, and nothing of what was sent:
 
 ```json
-{"path":"/webhook","status":200,"source":"github","messages":[{"delivered":["discord"],"failed":[{"channel":"loki","error":"timeout"}]}]}
+{"message":"/webhook 200 from github, failed: loki","path":"/webhook","status":200,"source":"github","messages":[{"delivered":["discord"],"failed":[{"channel":"loki","error":"timeout"}]}]}
 ```
 
 | Field | Value |
 |---|---|
+| `message` | The other fields in a few words, for a list of lines that shows only this one |
 | `path` | The endpoint |
 | `status` | The status answered |
 | `source` | The source of the token; left out for a 401 |
