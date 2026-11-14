@@ -12,9 +12,8 @@ export const telegram: Outbound = {
     async send(message, params, { fetch, signal }) {
         const { title, text, rich, level, url } = message
         const heading = url ? `<a href="${escape(url, true)}">${escape(title)}</a>` : escape(title)
-        // A rich message renders Markdown, tables included, but a client older than it shows none of it, so
-        // a message without rich goes as one any client shows. Markdown is not parsed within a block tag,
-        // which keeps the title as written
+        // Use classic messages for compatibility unless rich is supplied.
+        // A block HTML tag prevents Markdown parsing inside the title.
         const [method, content] = rich
             ? ['sendRichMessage', { rich_message: { markdown: `<p><b>${heading}</b></p>\n\n${rich}` } }]
             : [
@@ -40,8 +39,7 @@ export const telegram: Outbound = {
             | { ok?: unknown; error_code?: unknown; description?: unknown; parameters?: { retry_after?: unknown } }
             | undefined
         if (response.ok && answer?.ok === true) return
-        // ok decides, as the Bot API has it. Telegram's own server also sets the status to error_code, and
-        // sends Retry-After with retry_after, but a proxy may answer 200 or drop the header
+        // Read API errors and retry delays from the body; proxies may alter the status or headers.
         if (answer?.ok === false) {
             const code = typeof answer.error_code === 'number' ? answer.error_code : response.status
             if (code === 429) {
@@ -58,7 +56,7 @@ export const telegram: Outbound = {
     },
 }
 
-// fetch names the whole URL in its error, token and all, so a SERVER it cannot use is caught first
+// Validate before fetch can expose credentials in a URL error.
 function endpoint(params: Record<string, string>, method: string): URL {
     let server: URL
     try {
@@ -77,7 +75,6 @@ function topic(value: string): number {
     return Number(value)
 }
 
-// Telegram's reasons name what went wrong, never the message, after the status's own words
 function reason(description: string): string {
     const words = description.replace(/^[A-Z][a-z]+(?: [A-Z][a-z]+)*: /, '')
     return words.length > MAX_REASON ? `${words.slice(0, MAX_REASON)}…` : words

@@ -5,8 +5,8 @@ export interface Source {
     detach(): void
 }
 
-// Unlike Readable.toWeb, which destroys its source on cancel and never lets go of it: STARTTLS hands the
-// socket to TLS, and an HTTP request whose body the relay stops reading must still get its response
+// Cancellation must release listeners without destroying the source: STARTTLS reuses the socket,
+// and rejected HTTP bodies still need a response. Readable.toWeb destroys the source on cancel.
 export function fromNode(source: Readable, onCancel: () => void, failure: (error: Error) => Error = (error) => error): Source {
     let settled = false
     let controller!: ReadableStreamDefaultController<Uint8Array>

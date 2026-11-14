@@ -2,13 +2,13 @@ import { BadRequest } from '../core/http'
 import { refuseLink } from '../core/link'
 import { LEVELS, type Draft, type Inbound, type Level } from '../core/message'
 
-// The sender cannot shorten what it sends, so the adapter does, to what every channel type takes
+// Bound generated content; channel formatting and encoding can add further overhead.
 const NAME_MAX = 100
 const ALERT_MAX = 300
-// Both, as channels count either: 1,200 characters of Chinese are 3,600 bytes, and of emoji 4,800
+// Channels limit either characters or bytes, so enforce both.
 const TEXT_MAX = 1200
 const TEXT_MAX_BYTES = 3600
-// Room kept in both for the line that counts the alerts left out
+// Reserve space for the omitted-alert count.
 const COUNT_MAX = 30
 
 const SEVERITIES: Record<string, Level> = { critical: 'critical', warning: 'high', info: 'normal' }
@@ -22,9 +22,7 @@ interface Alert {
     link: unknown
 }
 
-// The webhook notification of Alertmanager, which Grafana sends too with fields of its own added. A
-// notification is about a group of alerts and is sent again whenever one of them changes, so it becomes
-// one message: one per alert would repeat every alert of the group each time
+// Keep each group in one message to avoid a burst of per-alert messages on every update.
 export const alertmanager: Inbound = {
     parse(body) {
         if (!isObject(body)) throw new BadRequest('body must be a JSON object')
@@ -73,8 +71,7 @@ function readLabels(value: unknown, at: string): Labels {
     return value
 }
 
-// The name the alerts share, read from them rather than from what the sender says they have in common;
-// failing that, what they were grouped by
+// Derive shared labels from the alerts rather than trusting commonLabels.
 function nameOf(alerts: Alert[], groupLabels: unknown): string {
     const first = own(alerts[0]!.labels, 'alertname')
     const shared = alerts.every((alert) => own(alert.labels, 'alertname') === first) ? first : undefined
@@ -82,7 +79,7 @@ function nameOf(alerts: Alert[], groupLabels: unknown): string {
     return cut(oneLine(shared ?? ''), NAME_MAX) || cut(oneLine(grouped), NAME_MAX) || 'alerts'
 }
 
-// A label may be named like what every object inherits, such as constructor
+// Label names may collide with inherited properties such as constructor.
 function own(labels: Labels, name: string): string | undefined {
     return Object.hasOwn(labels, name) ? labels[name] : undefined
 }
@@ -91,7 +88,7 @@ function oneLine(value: string): string {
     return value.replace(/[\s\0-\x1f\x7f]+/g, ' ').trim()
 }
 
-// By character, so that none is cut in half
+// Split by Unicode code point to avoid cutting surrogate pairs.
 function cut(value: string, max: number): string {
     const characters = [...value]
     return characters.length > max ? `${characters.slice(0, max - 1).join('')}…` : value
@@ -100,7 +97,6 @@ function cut(value: string, max: number): string {
 function describe(firing: Alert[], alerts: Alert[], truncated: unknown): string {
     const telling = tellingLabels(alerts)
     const resolved = alerts.filter((alert) => !alert.firing)
-    // Firing first; in a group that still fires, the resolved ones say so
     const all = [...firing, ...resolved]
 
     const encoder = new TextEncoder()
@@ -129,7 +125,7 @@ function describeAlert(alert: Alert, telling: Set<string>): string {
     return (apart.length > 0 ? apart : labels).map(([name, value]) => `${name}=${value}`).join(', ')
 }
 
-// The labels that tell the alerts apart: those not every alert has with the same value
+// Exclude shared labels so the fallback description distinguishes alerts.
 function tellingLabels(alerts: Alert[]): Set<string> {
     const seen = new Map<string, { value: string; count: number }>()
     const telling = new Set<string>()
@@ -147,8 +143,7 @@ function tellingLabels(alerts: Alert[]): Set<string> {
     return alerts.length > 1 ? telling : new Set()
 }
 
-// A resolved group is no longer urgent; a firing one is as urgent as its most severe alert, and an alert
-// that states no severity is still an alert
+// Treat unknown severity as high so an unlabeled firing alert remains urgent.
 function levelOf(firing: Alert[]): Level {
     if (firing.length === 0) return 'normal'
     const ranks = firing.map((alert) => {
@@ -158,8 +153,7 @@ function levelOf(firing: Alert[]): Level {
     return LEVELS[Math.max(...ranks)]!
 }
 
-// The link the alerts share, else the sender's own. One that is not a clean https link is left out
-// rather than refused, as nobody can change what the sender puts there
+// Omit unusable upstream links instead of rejecting the notification.
 function linkOf(alerts: Alert[], external: unknown): string | undefined {
     const first = alerts[0]!.link
     const shared = alerts.every((alert) => alert.link === first) ? first : undefined

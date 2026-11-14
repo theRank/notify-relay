@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Runs the Lambda bundle in AWS's Node 24 base image, whose Runtime Interface Emulator invokes the handler
-# as Lambda would, and sends it Function URL events: it must load, read its settings from the function's
-# environment and answer in payload format 2.0.
 set -euo pipefail
 
 bundle=$(cd "${1:-dist/lambda}" && pwd)
@@ -41,7 +38,7 @@ case $health in
     *) fail "unexpected /healthz answer: $health" ;;
 esac
 
-# The channel's host does not resolve, so a 502 naming it shows the request went all the way through
+# An unreachable channel yields 502 only after routing and delivery are attempted.
 answer=$(curl --silent --data "$(event POST /webhook channels=logs '{"title":"smoke"}')" "$invocations")
 case $answer in
     *'"statusCode":502'*'\"failed\":[{\"channel\":\"logs\"'*) ;;

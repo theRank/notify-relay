@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# The bundle is plain JavaScript, so it is built once on the builder's own platform for every target,
-# and building for another architecture runs nothing under emulation
+# The JavaScript bundle is architecture-independent; build natively to avoid emulation.
 FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -10,7 +9,6 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build:node
 
-# The bundle has no dependencies, so the image is Node and one file
 FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 WORKDIR /app
 COPY --from=build /app/dist/node/index.mjs ./

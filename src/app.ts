@@ -36,7 +36,7 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
     const seen: Seen = {}
     const response = await receive(request, url, inbound, env, deps, seen)
     const failed = [...new Set(seen.messages?.flatMap((message) => message.failed.map(({ channel }) => channel)))]
-    // A channel that failed is worth a look though the message arrived: the sender may read only the status
+    // Warn on partial failures even when the sender sees 200.
     deps.log(response.status === 502 ? 'error' : response.status >= 400 || failed.length > 0 ? 'warn' : 'info', {
         message: [
             `${url.pathname} ${response.status}`,
@@ -51,13 +51,12 @@ export async function handle(request: Request, env: object, deps: AppDeps): Prom
     return response
 }
 
-// What a request leaves for the log besides its path and status
 type Seen = Pick<LogEntry, 'source' | 'error' | 'messages'>
 
-// A reason may quote the request, as an unknown field's name
+// Bound log output because validation errors can quote user input.
 const ERROR_LOGGED = 200
 
-// Token first: an unauthenticated caller learns nothing from validation and never has its body read
+// Authenticate before validation or reading the body in the core.
 async function receive(request: Request, url: URL, inbound: Inbound, env: object, deps: AppDeps, seen: Seen): Promise<Response> {
     const refuse = (status: 400 | 403, error: string) => {
         seen.error = error.slice(0, ERROR_LOGGED)
@@ -100,12 +99,12 @@ function ready(channels: Map<string, Channel>, env: object): boolean {
     const configured = [...channels.values()]
     const complete = configured.every((channel) => channel.adapter !== undefined && channel.missing.length === 0)
     const senders = sources(env)
-    // A list for a source without a token holds nobody to anything, which a misspelt name would not show
+    // Catch misspelled sources that would silently leave the intended source unrestricted.
     const held = allowlists(env).every((list) => senders.includes(list.source) && list.channels.every((name) => channels.has(name)))
     return configured.length > 0 && complete && senders.length > 0 && held
 }
 
-// Content-Length is not trusted
+// Enforce the limit on streamed bytes too; Content-Length may be absent or false.
 async function readBody(request: Request): Promise<string | undefined> {
     if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) return undefined
     if (!request.body) return ''

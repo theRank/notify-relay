@@ -42,7 +42,7 @@ describe('the deployed handler', () => {
         expect(response.status).toBe(401)
     })
 
-    // As an object, whose fields Workers Logs can be queried by; its message is what the list of events shows
+    // Workers Logs needs an object to preserve queryable fields.
     it('logs the request with the runtime console', async () => {
         const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
         await call('POST', '/webhook?channels=loki', { body: '{"title":"x"}' })

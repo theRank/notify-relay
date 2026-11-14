@@ -1,5 +1,5 @@
-// Bundled as CommonJS: the library requires @azure/functions-core, which the worker provides, and in an ES
-// module bundle that require fails quietly, leaving the library in a test mode that registers nothing
+// CommonJS lets @azure/functions require the host's functions-core module; an ESM bundle silently
+// falls back to test mode and registers no functions.
 import { app } from '@azure/functions'
 import { logLine } from '../core/log'
 import { azure } from './azure/handler'

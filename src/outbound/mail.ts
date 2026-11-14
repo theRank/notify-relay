@@ -3,7 +3,7 @@ import type { Message } from '../core/message'
 
 // base64 has no '_', so no part can contain the boundary
 const BOUNDARY = '_notify-relay_'
-// RFC 2047 caps encoded-word lines at 76 characters; 39 bytes make 64 after 'Subject: '
+// 39 bytes produce a 64-character encoded word, keeping 'Subject: ' plus the word below 76.
 const WORD_BYTES = 39
 // ASCII only: an SMTP envelope without SMTPUTF8 carries nothing else
 const PART = String.raw`(?:(?![<>",@])[!-~])+`
@@ -102,8 +102,7 @@ function parseAddresses(value: string): { name: string; address: string }[] | un
     return parsed
 }
 
-// `name <address>`, cut at the last '<' rather than matched by a pattern: one that tries every length of
-// the name takes time that grows with the square of a long run of spaces
+// Split at the last '<' to avoid quadratic regex backtracking on long runs of spaces.
 function parseMailbox(value: string): { name: string; address: string } | undefined {
     const open = value.lastIndexOf('<')
     if (open < 0 || !value.endsWith('>')) return undefined

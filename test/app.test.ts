@@ -153,7 +153,7 @@ describe('the line logged for a request', () => {
         CHANNEL_ARCHIVE_TYPE: 'loki',
         CHANNEL_ARCHIVE_URL: 'https://archive.example/loki/api/v1/push',
         CHANNEL_ARCHIVE_USER: '654321',
-        // Missing its token, so it fails without being called
+        // Omit TOKEN so delivery fails before contacting the archive.
     }
 
     it('says who sent what where, and that it arrived', async () => {
@@ -184,7 +184,6 @@ describe('the line logged for a request', () => {
         ])
     })
 
-    // Which the sender may never read: the status is 200
     it('is a warning when a channel failed though the message arrived', async () => {
         const { logged, send } = setup(204, archive)
         const response = await send('/webhook?channels=loki&also=archive', authorized({ title: 'x' }))
@@ -498,7 +497,6 @@ describe('GET /healthz', () => {
         expect((await setup(204, { ALLOW_GITHUB_CHANNELS: '' }).send('/healthz')).status).toBe(200)
     })
 
-    // Misspelt, the list would hold nobody to anything, and say nothing
     it('is 503 while a list of channels is for a source without a token', async () => {
         const { send } = setup(204, { ALLOW_GITHUBB_CHANNELS: 'loki' })
         expect((await send('/healthz')).status).toBe(503)

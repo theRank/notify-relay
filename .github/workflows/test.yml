@@ -1,11 +1,5 @@
 name: Test
 
-# Runs on PRs and main: typecheck, tests on the Workers runtime and on Node, the bundles, the container
-# image on amd64 and arm64, the Lambda bundle in AWS's runtime and the Azure package in Microsoft's
-# Functions host, each run as a deployment would. The typecheck is a separate step because esbuild strips
-# types without checking them. Once the tests and the image pass on main, the image is published to GHCR.
-# Nothing here deploys; deployments pick a commit or an image and run it themselves.
-
 on:
   pull_request:
   push:
@@ -35,6 +29,7 @@ jobs:
       - name: Install
         run: npm ci
 
+      # esbuild strips types without checking them.
       - name: Typecheck
         run: npm run typecheck
 
@@ -115,8 +110,7 @@ jobs:
       - name: Smoke test
         run: test/azure/smoke.sh dist/azure
 
-  # Here rather than in a workflow_run of its own, which a fork's pull request from a branch named main
-  # could trigger with write access
+  # Keep publishing on trusted pushes; workflow_run can be triggered by fork PR workflows.
   publish:
     name: publish
     needs: [ test, docker ]
@@ -147,8 +141,7 @@ jobs:
             --label "org.opencontainers.image.licenses=MIT" \
             .
 
-      # Decided after the build, which takes minutes, and with publish jobs one at a time, so latest never
-      # goes back to an older commit
+      # Recheck main after the build; serialized publish jobs must not move latest backward.
       - name: Tag latest
         run: |
           if [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
