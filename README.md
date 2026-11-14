@@ -148,6 +148,9 @@ The channel's name is `<NAME>` in lowercase with `_` turned into `-`, so `CHANNE
 `home-lab`, used as `?channels=home-lab`. Parameters are looked up by their exact names. The relay reads
 variables and secrets alike; keep the sensitive parameters as secrets.
 
+A name must not continue another channel's name with the start of one of its parameters, as the two would
+then share a variable: `CHANNEL_MAIL_ALLOW_TO` is `ALLOW_TO` of `mail` and `TO` of `mail-allow` alike.
+
 ```text
 CHANNEL_LOGS_TYPE=loki                  # variable
 CHANNEL_LOGS_URL=https://logs-prod-000.grafana.net/loki/api/v1/push
