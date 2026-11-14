@@ -17,7 +17,7 @@ export function resolveChannels(env: object, adapters: Record<string, Outbound>)
         const id = TYPE_KEY.exec(key)?.[1]
         if (id === undefined || typeof type !== 'string') continue
         const name = id.toLowerCase().replaceAll('_', '-')
-        // Own types only: a type such as toString would otherwise find what every object inherits
+        // Reject inherited names such as toString.
         const adapter = Object.hasOwn(adapters, type) ? adapters[type] : undefined
         const params: Record<string, string> = {}
         const missing: string[] = []

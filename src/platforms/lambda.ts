@@ -4,7 +4,7 @@ import { unsupported } from './method'
 import { connector } from './node/connect'
 import { ORIGIN } from './origin'
 
-// Payload format 2.0, which Function URLs and HTTP APIs send; REST APIs send 1.0
+// Payload format 2.0 only; HTTP API integrations must explicitly select this format.
 export interface LambdaEvent {
     version?: string
     rawPath?: string

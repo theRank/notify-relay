@@ -1,21 +1,12 @@
 # notify-relay
 
-A stateless notification relay for Cloudflare Workers and Node. Senders POST a message; the relay
-authenticates them, validates the message and delivers it to the channels named in the URL, within the
-same request. There is no queue, no database and no history.
+A stateless notification relay for Cloudflare Workers, Node, AWS Lambda and Azure Functions. It
+authenticates incoming messages and delivers them to the channels named in the URL within the same
+request. There is no queue, database, history or default channel.
 
-- **Delivers, never stores.** Anything stateful (deduplication, grouping, acknowledgement, escalation,
-  dead-man's switches) belongs upstream or in a service built for it, e.g. your alerting system.
-- **The sender picks the channels.** They are part of the URL. The relay has no routing rules and no
-  default channel.
-- **The sender owns the content.** Channels put each field in its slot and add nothing; the relay never
-  joins, converts or strips text. A sender writing for a constrained channel controls every character
-  that arrives. Only an adapter for a payload its sender cannot shape, such as `/alertmanager`, writes
-  the message itself.
-- **Adapters on both sides.** Inbound adapters turn a sender's native payload into one message format;
-  outbound adapters turn that message into a channel's API call. The core knows neither.
-- **Not a pager.** If something must wake you up, send it to a paging service directly. A relay outage
-  should cost you routine messages, not an incident.
+Senders choose the content and channels. Adapters format and escape content for each channel;
+`/alertmanager` also composes and shortens messages from alert groups. Deduplication, grouping and
+escalation belong upstream. Send critical pages through an independent paging service.
 
 ```text
 inbound adapters               message           outbound adapters
@@ -33,22 +24,17 @@ Content-Type: application/json
 {"title": "deploy done", "level": "low"}
 ```
 
-The URL says where to deliver and the body says what the message is. Every inbound endpoint works this
-way; for an adapter that translates a third-party payload, the body is that payload unchanged.
-
 | Query | Required | Meaning |
 |---|---|---|
 | `channels` | yes | Primary group: names of configured channels, comma-separated, delivered in parallel |
 | `fallback` | no | Tried in order, only when the whole primary group failed, until one succeeds |
 | `also` | no | Channels that get a copy, sent with the primary group. Whether a copy arrives changes neither the status nor whether the fallback is tried |
 
-A channel that is not configured, a channel in two groups or a missing `channels` is a 400. Channel
-names are the deployment's own (see [Channels](#channels)), not channel types.
+Unknown channels, a channel in two groups or missing `channels` produce a 400; a channel outside the
+token's [allowlist](#authentication) produces a 403. Use configured [channel names](#channels), not types.
 
-The status says whether the message arrived on a channel in `channels` or `fallback`, so a sender that
-reads only the status, and tries again on a 502, names there the channels that must have it and in `also`
-the ones that keep a record: `?channels=discord&also=loki`. A copy is sent on every attempt, so a message
-the sender retries is recorded once for each.
+For example, `?channels=discord&also=loki` bases the status on Discord and sends a copy to Loki.
+Sender retries also resend the copy.
 
 `/webhook` takes the relay's own format:
 
@@ -63,11 +49,9 @@ the sender retries is recorded once for each.
 | `group` | no | Display grouping |
 | `to` | no | Recipients by channel name, e.g. `{"mail": "ops@example.com"}`; see [Recipients](#recipients) |
 
-`title`, `text` and `rich` are the content. A channel that renders markup shows `rich` when it is given,
-the others show `text`; the relay neither checks that the two agree nor derives one from the other.
-`level`, `url`, `key` and `group` are metadata, used by the channels that have a place for them and
-ignored by the rest; each channel type below says which it uses. `to` is checked as
-[Recipients](#recipients) describes. An empty `text`, `rich`, `key` or `group` counts as left out.
+Rendering channels prefer `rich` when supported and provided; mail sends it as an HTML alternative.
+The relay does not derive `text` from `rich` or check that they agree. Each channel below lists the
+metadata it uses. Empty `text`, `rich`, `key` and `group` values are omitted.
 
 Unknown fields are a 400, so a misspelled field fails at the sender instead of being dropped. Bodies over
 64 KB are a 413.
@@ -101,8 +85,7 @@ POST /alertmanager?channels=discord HTTP/1.1
 Authorization: Bearer nr_...
 ```
 
-A notification is about a group of alerts, and is sent again whenever one of them changes. It becomes one
-message, as a message per alert would repeat every alert of the group each time:
+Each notification becomes one message for the alert group:
 
 | Field | Value |
 |---|---|
@@ -113,12 +96,10 @@ message, as a message per alert would repeat every alert of the group each time:
 | `key` | `groupKey`, so on a channel that replaces by key, a group's notification replaces its previous one |
 | `group` | The name in the title |
 
-- What the sender groups by, how often it repeats and whether it reports resolved alerts stay its own
-  settings. The relay adds no grouping and removes no repeats.
-- The sender cannot be told to write less, so here, and only here, the relay shortens: the name is cut at
-  100 characters and an alert at 300, and the text lists the alerts that fit in 1,200 characters and
-  3,600 bytes, ending with `… and 5 more` for the rest. Alerts the sender left out itself
-  (`truncatedAlerts`) are counted in.
+- Grouping, repeat intervals and resolved notifications are controlled by the sender.
+- The adapter caps names at 100 characters, each alert at 300, and text at 1,200 characters and
+  3,600 bytes. An `… and 5 more` suffix counts omitted alerts, including `truncatedAlerts` reported
+  by the sender. Channel limits still apply after formatting and encoding.
 - A notification without alerts is a 204. A body without an `alerts` array, or with an alert whose
   `status` is neither `firing` nor `resolved` or whose labels or annotations are not strings, is a 400.
 - An alert about the relay's own availability cannot arrive through the relay. Keep a second contact
@@ -133,38 +114,39 @@ message, as a message per alert would repeat every alert of the group each time:
 | 400, 401, 403, 404, 405, 413 | The request is wrong; retrying will not help |
 | 502 | Every channel in `channels` and `fallback` failed; retry |
 
-200 and 502 list the outcome per channel, those in `also` included, without any secret:
+200 and 502 list outcomes for attempted channels, including `also`:
 
 ```json
 {"messages": [{"delivered": ["loki"], "failed": [{"channel": "bark", "error": "timeout"}]}]}
 ```
 
-An error that would quote one of the channel's settings, as fetch quotes a URL it cannot use, token and
-all, has `<redacted>` in its place. Settings under 8 characters, such as a port, are left as they are.
+Channel settings of at least 8 characters are replaced with `<redacted>` in delivery errors.
+Shorter values, such as ports, are left unchanged.
 
-A 400 body is `{"error": "<reason>"}`, and so is that of a 403, which is for a channel the token
-[may not use](#authentication). A 401 has no body, only `WWW-Authenticate: Bearer`. Delivery is
-at-least-once: an occasional duplicate is preferred to a silent loss, and `key` lets channels collapse
-duplicates.
+A 400 or 403 body is `{"error": "<reason>"}`. A 401 has no body and includes
+`WWW-Authenticate: Bearer`. Success means a channel accepted the message, not that a person read it.
+The relay does not persist failed deliveries; the sender must retry. A timeout or lost response can
+leave delivery uncertain, so retries may duplicate messages. Supporting channels use `key` to replace
+earlier notifications.
 
-Each channel attempt times out after 5 seconds, enforced by the relay rather than left to the adapter.
-A 429 whose `Retry-After` is a number of seconds no greater than 2 is retried once within the request.
-A missing `Retry-After`, an HTTP date or a longer wait counts as a failure rather than blocking the
-request; the caller retries.
+Each channel attempt times out after 5 seconds. A 429 with a numeric `Retry-After` from 0 to 2 seconds
+is retried once within the request, with a fresh timeout. Missing, date-based or longer waits fail the
+attempt. Feishu also retries code `11232` after one second; Telegram can supply the delay in its body.
 
 ### Health
 
-`GET /healthz` needs no token and calls no channel; `HEAD` gets the same status without the body. It
-answers 200 when at least one channel is configured, every configured channel has a known type and all of
-that type's required parameters, at least one source token exists, and every
-[list of channels](#authentication) is for a source with a token and names configured channels; 503
-otherwise, without saying what is missing. Channel types nobody configured are not checked. Deploys do
-not check settings (see [Platforms](#platforms)), so point an external probe here.
+`GET /healthz` needs no token; `HEAD` returns the same status without a body. It returns 200 when:
+
+- At least one channel and source token exist.
+- Every configured channel has a known type and nonempty required parameters.
+- Every [channel allowlist](#authentication) belongs to a source with a token and names configured channels.
+
+Otherwise it returns 503 without identifying missing settings. It does not validate parameter values
+or contact providers, so 200 does not guarantee delivery. Use it as a deployment readiness probe.
 
 ### Logs
 
-A request to `/webhook` or `/alertmanager` leaves one line, which says who sent it where and how it
-ended, and nothing of what was sent:
+Each POST to `/webhook` or `/alertmanager` logs its source, status and delivery outcomes:
 
 ```json
 {"message":"/webhook 200 from github, failed: loki","path":"/webhook","status":200,"source":"github","messages":[{"delivered":["discord"],"failed":[{"channel":"loki","error":"timeout"}]}]}
@@ -172,34 +154,29 @@ ended, and nothing of what was sent:
 
 | Field | Value |
 |---|---|
-| `message` | The other fields in a few words, for a list of lines that shows only this one |
+| `message` | Summary for log viewers |
 | `path` | The endpoint |
 | `status` | The status answered |
 | `source` | The source of the token; left out for a 401 |
 | `error` | The reason of a 400 or 403, cut at 200 characters, as it may quote the request |
 | `messages` | The outcome per channel, as in the response; left out when nothing was sent |
 
-- The level is error for a 502, warning for any other refusal and for a 200 with a channel that failed,
-  and info otherwise. A failed channel behind a 200, such as a copy in `also`, is one the sender may
-  never see, so this is where to look for it.
+- The level is error for 502, warning for other refusals or partial delivery failures, and info otherwise.
 - `/healthz`, unknown paths and wrong methods leave no line.
-- On Cloudflare the line is an object in [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/),
-  with these fields to query by. Elsewhere it is a line of JSON on the standard output, or the standard
-  error for a warning or an error, wherever the platform takes those.
+- Cloudflare stores queryable objects in [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/).
+  Other platforms write JSON to stdout, or stderr for warnings and errors.
 
 ## Authentication
 
-`Authorization: Bearer <token>`, one token per sender, stored as a secret named `TOKEN_<SOURCE>`. A
-token in `TOKEN_GITHUB` authenticates the source `github` (lowercase, `_` becomes `-`). The source comes
-only from the token, never from the request, and adding a sender means adding a secret, not changing
-code.
+Send `Authorization: Bearer <token>` and store each sender's token as `TOKEN_<SOURCE>`.
+`TOKEN_GITHUB` identifies source `github`: names become lowercase and `_` becomes `-`.
+The token determines the source; the request cannot override it.
 
 - A secret may hold several tokens separated by spaces, so a rotation can overlap.
 - Tokens are compared in constant time against every candidate. Failures are a bare 401.
 - Tokens are never accepted in the query string, which ends up in logs.
-- Tokens travel in a header, so give senders `https://` URLs. A platform's redirect from HTTP to HTTPS
-  comes after the request, token included, has crossed in the clear: it makes a sender misconfigured
-  with `http://` fail, it does not protect it. Rotate a token sent that way.
+- Use `https://` URLs. An HTTP redirect cannot protect a token already sent in plaintext; rotate any
+  token sent over HTTP.
 
 Generate a token with the `nr_` prefix, which makes it easy for secret scanners to recognise:
 
@@ -207,27 +184,23 @@ Generate a token with the `nr_` prefix, which makes it easy for secret scanners 
 printf 'nr_%s\n' "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
 ```
 
-A token can use every channel unless its source is held to a list of them, in a variable named after the
-source as its secret is:
+A token can use every channel unless restricted by `ALLOW_<SOURCE>_CHANNELS`:
 
 ```text
 TOKEN_GRAFANA=nr_...                  # secret
 ALLOW_GRAFANA_CHANNELS=discord,loki   # variable
 ```
 
-- A request naming any other channel, in `channels`, `fallback` or `also`, is a 403 and delivers
-  nothing. It is the same 403 whether that channel exists, so the token does not tell which others the
-  deployment has.
+- Naming a disallowed channel in any routing group returns 403 before delivery, whether it exists or not.
 - A list that is set and empty admits nothing.
-- `/healthz` answers 503 for a list whose source has no token, as a misspelt name would otherwise leave
-  the source free without a sign, and for one naming a channel that is not configured.
+- `/healthz` catches lists with unknown sources or channels, including misspellings that would leave a
+  source unrestricted.
 - It is about channels only. Whom a mail channel may write to is that channel's `ALLOW_TO`.
 
 ## Channels
 
-A *channel type* is code (`loki`); a *channel* is a configured instance of one, named by the deployment.
-A deployment can configure several channels of the same type and none of another. Each channel is a set
-of settings, which are Worker bindings or environment variables depending on the [platform](#platforms):
+A *channel* is a named instance of a *channel type* such as `loki`. Multiple channels may share a type.
+Settings are Worker bindings or environment variables, depending on the [platform](#platforms):
 
 ```text
 CHANNEL_<NAME>_TYPE     the type, e.g. loki; declares the channel
@@ -250,16 +223,14 @@ CHANNEL_ARCHIVE_TYPE=loki               # a second channel of the same type
 ...
 ```
 
-A delivery that fails says why in a few words, such as `HTTP 400` or `timeout`, and never in the text
-the channel's server answered with, which could quote a secret or the message. A type that says more is
-described as doing so.
+Delivery errors are brief, such as `HTTP 400` or `timeout`. Provider response bodies are omitted except
+for the specific error fields described below.
 
 ### `loki`
 
 Pushes each message as one log line to Loki's `/loki/api/v1/push` with basic auth. Labels hold only
-low-cardinality fields (`job="notify-relay"`, `source`, `level`); every other field is in the line's JSON
-as sent. Handy as a first channel: a line you can query is a positive signal that delivery works, and it
-doubles as a record of everything sent.
+low-cardinality fields (`job="notify-relay"`, `source`, `level`); every other field, including `to`, is in
+the line's JSON.
 
 | Parameter | Keep as | Meaning |
 |---|---|---|
@@ -488,17 +459,18 @@ curl -s "https://api.telegram.org/bot$TOKEN/getUpdates" | grep -o '"chat":{"id":
 - Telegram takes about a message a second per chat and 20 a minute per group.
 - `api.telegram.org` is blocked in some countries, mainland China among them. A proxy in `SERVER` sees
   the token and every message.
-- A refused message fails as e.g. `HTTP 400 (chat not found)` or `HTTP 403 (bot was blocked by the
-  user)`, with Telegram's reason, which names what went wrong and never the message; a wrong `TOKEN` as
-  `HTTP 401 (Unauthorized)`. A group that became a supergroup has a new ID, and the old one fails. A
+- A refused message includes up to 100 characters of the API's reason, e.g. `HTTP 400 (chat not found)`
+  or `HTTP 403 (bot was blocked by the user)`; a wrong `TOKEN` gives `HTTP 401 (Unauthorized)`.
+  A group that became a supergroup has a new ID, and the old one fails. A
   `THREAD` that is not a topic ID, or a `SERVER` that is not an http(s) URL or holds a user or password,
   fails without sending.
 
 ### `webhook`
 
-Posts the message as JSON to a receiver of your own, such as n8n, Home Assistant or a script. The body
-is the message as the sender gave it, with the sender's `source` added and `to` left out, as it names the
-recipients of other channels; a field the sender left out is absent:
+Posts the parsed message as JSON to a receiver such as n8n, Home Assistant or a script. The body always
+includes the authenticated `source` and `level` (`normal` when omitted from `/webhook` input).
+It omits `to` to keep other channels' recipients private, absent optional fields, and empty `text`,
+`rich`, `key` and `group`:
 
 ```json
 {"source": "github", "title": "deploy done", "text": "all green", "level": "high", "key": "deploy-1"}
@@ -526,12 +498,10 @@ import { Webhook } from 'standardwebhooks'
 new Webhook(secret).verify(body, headers) // throws unless the post is genuine; body exactly as received
 ```
 
-- Any 2xx counts as delivered. A redirect fails as e.g. `HTTP 301` instead of being followed: following
-  a 301 or 302 turns the POST into a GET without the body, which the page it lands on may well answer
-  with 200. Point `URL` at where the redirect leads.
+- Any 2xx counts as delivered. Redirects fail to prevent a POST becoming a bodyless GET that appears
+  successful. Set `URL` to the final destination.
 - The receiver has the 5 seconds every channel has, so answer first and do the work after.
-- Each post gets an ID of its own, also when the relay retries after a 429 or the sender after a 502, so
-  the ID does not tell a repeat; `key` does, when the sender sets one.
+- Each signed attempt gets a new webhook ID, including retries. Use the message's `key` to identify repeats.
 - The body grows with the message format (see [Contract](#contract)), so ignore fields you do not know.
 - Over `http://`, the message and the token cross in the clear.
 - A `SECRET` that is not base64 or shorter than 24 bytes fails every post, without posting.
@@ -587,8 +557,9 @@ PORT=8080 TOKEN_GITHUB=nr_... CHANNEL_LOGS_TYPE=loki CHANNEL_LOGS_URL=https://..
 The Node server in an image of its own: `node:24-alpine` and the one bundled file, run as `node`, not
 root. It runs wherever containers do, such as Cloud Run, Fly.io, Railway, Render, ECS or Kubernetes.
 
-Each commit on `main` that passes CI is published for linux/amd64 and linux/arm64 as
-`ghcr.io/therank/notify-relay:sha-<commit>`, and as `latest` while it is the newest:
+After the test and Docker jobs pass on `main`, CI publishes linux/amd64 and linux/arm64 images as
+`ghcr.io/therank/notify-relay:sha-<commit>` (the first seven commit characters). It updates `latest`
+only if that commit is still the tip of `main`.
 
 ```bash
 docker run --publish 8080:8080 --env-file relay.env ghcr.io/therank/notify-relay:latest
@@ -629,8 +600,9 @@ gcloud run deploy notify-relay --image ghcr.io/therank/notify-relay:sha-<commit>
 
 ### AWS Lambda
 
-A function behind a Function URL or an HTTP API, which send events in payload format 2.0. REST APIs send
-1.0, which the relay answers with a 500.
+A function behind a Function URL or an HTTP API configured with
+[payload format 2.0](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html).
+HTTP API format 1.0 and REST API events are unsupported and return 500.
 
 ```bash
 npm ci
@@ -696,12 +668,9 @@ az functionapp deployment source config-zip --name <app> --resource-group <group
 
 ## Development
 
-TypeScript, with no runtime dependencies, except that the Azure bundle holds `@azure/functions`, through
-which the host calls a function. The core (`src/app.ts`, `src/core`, `src/inbound`, `src/outbound`) uses
-only web-standard APIs such as `fetch`, `crypto` and streams. Each platform's entry under
-`src/platforms` adapts its runtime to the core and passes in a TCP `connect`: `cloudflare:sockets` on
-Workers, `node:net` and `node:tls` on Node, Lambda and Azure. The toolchain (wrangler, esbuild, vitest
-with Cloudflare's plugin, typescript) is development-only. Node 24.
+Requires Node 24 or later. The TypeScript core uses web APIs (`fetch`, `crypto`, streams) and an injected
+TCP connector: `cloudflare:sockets` on Workers, `node:net` and `node:tls` elsewhere. Platform entries live
+in `src/platforms`. Bundles are self-contained; Azure also bundles `@azure/functions` for host integration.
 
 ```bash
 npm ci

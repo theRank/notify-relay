@@ -5,7 +5,7 @@ import type { Level } from '../core/message'
 
 const TEMPLATES: Record<Level, string> = { low: 'grey', normal: 'blue', high: 'orange', critical: 'red' }
 
-// Feishu names no delay; its limit is five posts a second
+// The API supplies no retry delay for this code; use one second below.
 const RATE_LIMITED = 11232
 
 export const feishu: Outbound = {

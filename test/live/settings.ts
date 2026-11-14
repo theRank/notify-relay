@@ -1,7 +1,3 @@
-// The settings of the relay under the live test, built from the LIVE_* variables. To test a deployment,
-// print them in the form its platform takes:
-// LIVE_RELAY_TOKEN=nr_... LIVE_NTFY_TOPIC=... node test/live/settings.ts env|json|lambda
-
 const NAMES = [
     'LIVE_LOKI_URL',
     'LIVE_LOKI_USER',
@@ -21,9 +17,7 @@ const NAMES = [
     'LIVE_IMAP_PASSWORD',
 ] as const
 
-// Bark, Slack, Discord, Feishu and Telegram deliver to a device or a workspace of one's own, which the
-// test cannot read back from: without its variable, the relay under test has no such channel and its
-// test is skipped. The ntfy topic has a default
+// Personal destinations are optional; an unset channel is skipped. The ntfy topic has a default.
 const OPTIONAL = [
     'LIVE_BARK_KEY',
     'LIVE_BARK_ENCRYPTION',
@@ -45,8 +39,7 @@ export function readLive(env: NodeJS.ProcessEnv = process.env): Live {
     return Object.fromEntries([...NAMES, ...OPTIONAL].filter((name) => env[name]).map((name) => [name, env[name]!])) as Live
 }
 
-// ntfy.sh needs no account: a topic nobody can guess, fresh each run, keeps the test's messages its own.
-// A deployment and the test against it run apart, so they share LIVE_NTFY_TOPIC instead
+// Use an unguessable topic per run, or share LIVE_NTFY_TOPIC with an existing deployment.
 export function ntfyTopic(live: Live): string {
     return live.LIVE_NTFY_TOPIC ?? `notify-relay-live-${crypto.randomUUID()}`
 }
@@ -90,12 +83,10 @@ export function relaySettings(live: Live, token: string, topic: string): Record<
             }),
         CHANNEL_NTFY_TYPE: 'ntfy',
         CHANNEL_NTFY_TOPIC: topic,
-        // ntfy keeps a body posted to a topic as the message, which makes the topic a receiver that can be
-        // read back. It ignores the signature, so signing is only seen not to fail
+        // ntfy stores the body for readback but does not verify the webhook signature.
         CHANNEL_WEBHOOK_TYPE: 'webhook',
         CHANNEL_WEBHOOK_URL: `https://ntfy.sh/${topic}`,
         CHANNEL_WEBHOOK_SECRET: `whsec_${btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))}`,
-        // The same device again, end-to-end encrypted as its app is set to decrypt
         ...(live.LIVE_BARK_KEY &&
             live.LIVE_BARK_ENCRYPTION &&
             live.LIVE_BARK_ENCRYPTION_KEY && {
@@ -108,8 +99,6 @@ export function relaySettings(live: Live, token: string, topic: string): Record<
     }
 }
 
-// env: relay.env for Docker and Cloud Run. json: settings.json for Azure, or for `wrangler secret bulk`.
-// lambda: env.json for Lambda.
 const FORMATS: Record<string, (settings: Record<string, string>) => string> = {
     env: (settings) => Object.entries(settings).map(([name, value]) => `${name}=${value}\n`).join(''),
     json: (settings) => `${JSON.stringify(settings, null, 4)}\n`,

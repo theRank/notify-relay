@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Runs the Azure deploy package in Microsoft's Functions host image for Node 24, as a function app runs it:
-# it must load, read its settings from the app's environment, take a body whether it comes with a length
-# or chunked, and leave a body past FUNCTIONS_REQUEST_BODY_SIZE_LIMIT to the host.
 set -euo pipefail
 
 package=$(cd "${1:-dist/azure}" && pwd)
@@ -44,7 +41,7 @@ send() {
     [ "${answer##*$'\n'}" = "$expected" ] || fail "expected $expected, got: $answer"
 }
 
-# The channel's host does not resolve, so a 502 naming it shows the request went all the way through
+# An unreachable channel yields 502 only after routing and delivery are attempted.
 send 502 --header 'authorization: Bearer nr_test' --header 'content-type: application/json' <<<'{"title":"smoke"}'
 case $answer in *'"failed":[{"channel":"logs"'*) ;; *) fail "unexpected /webhook answer: $answer" ;; esac
 send 502 --header 'authorization: Bearer nr_test' --header 'transfer-encoding: chunked' <<<'{"title":"chunked"}'

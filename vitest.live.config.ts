@@ -8,11 +8,9 @@ const live = readLive()
 const { GITHUB_SHA, GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_RUN_ID } = process.env
 const repository = GITHUB_RUN_ID ? `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}` : undefined
 
-// The relay under test is the Worker in this process, a container of LIVE_IMAGE started here with the
-// Worker's settings, or a deployment at LIVE_RELAY_URL that holds them already
 const { LIVE_IMAGE: image, LIVE_RELAY_URL: deployed, LIVE_RELAY_TOKEN } = process.env
 if (image && deployed) throw new Error('set LIVE_IMAGE or LIVE_RELAY_URL, not both')
-// A deployment is reachable by anyone, so its token is a secret rather than a fixed one
+// A remote deployment must not use the fixed local test token.
 if (deployed && !LIVE_RELAY_TOKEN) throw new Error('LIVE_RELAY_URL needs LIVE_RELAY_TOKEN')
 if (deployed && !live.LIVE_NTFY_TOPIC) throw new Error('LIVE_RELAY_URL needs LIVE_NTFY_TOPIC, the topic the deployment publishes to')
 const token = deployed ? LIVE_RELAY_TOKEN! : 'nr_live'

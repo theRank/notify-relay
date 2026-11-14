@@ -3,7 +3,7 @@ import { RateLimited } from './http'
 import type { Message } from './message'
 import type { Route } from './query'
 
-// The subset of Cloudflare's sockets API that smtp uses, so its connect() fits as is
+// Matches the Cloudflare socket methods SMTP needs, without a runtime dependency.
 export interface Connection {
     readonly readable: ReadableStream<Uint8Array>
     readonly writable: WritableStream<Uint8Array>
@@ -58,8 +58,7 @@ export async function deliver(message: Message, route: Route, deps: Deps): Promi
         else failed.push({ channel, error })
     }
 
-    // The copies go out with the primary group and are not waited for until the message has its outcome,
-    // which they do not change: one that arrives does not make up for the others, nor spare the fallback
+    // Copies run concurrently but must not affect success or delay fallback attempts.
     const copies = Promise.all(route.also.map((channel) => attempt(message, channel, deps)))
     const errors = await Promise.all(route.channels.map((channel) => attempt(message, channel, deps)))
     route.channels.forEach((channel, i) => record(channel, errors[i]))
@@ -126,8 +125,7 @@ function reason(error: unknown): string {
     return 'failed'
 }
 
-// The outcome goes to the sender, and an error may quote a channel's setting: fetch names a URL it cannot
-// use whole, token and all. A shorter value is too likely to turn up by chance, as a port in a status
+// Errors may expose settings. Short values are excluded to avoid redacting unrelated numbers or words.
 const MIN_REDACTED = 8
 
 function redact(text: string, params: Record<string, string>): string {
@@ -135,7 +133,7 @@ function redact(text: string, params: Record<string, string>): string {
         .filter((value) => value.length >= MIN_REDACTED)
         .flatMap((value) => [value, encodeURIComponent(value), ...(URL.canParse(value) ? [new URL(value).href] : [])])
     if (forms.length === 0) return text
-    // Longest first, so a setting within another goes with it, in one pass, so nothing is redacted twice
+    // Match longer settings first; one pass avoids redacting replacement text.
     const pattern = [...new Set(forms)]
         .sort((a, b) => b.length - a.length)
         .map((form) => form.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&'))

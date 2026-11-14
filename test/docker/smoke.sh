@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Runs an image of the relay as a deployment would: it must serve with the settings in its environment,
-# run as a user other than root, pass its own HEALTHCHECK and stop promptly and cleanly.
 set -euo pipefail
 
 image=${1:?usage: test/docker/smoke.sh <image>}
@@ -29,7 +27,7 @@ done
 
 [ "$(curl --silent "$origin/healthz")" = ok ] || fail "/healthz is not ok"
 
-# The channel's host does not resolve, so a 502 naming it shows the request went all the way through
+# An unreachable channel yields 502 only after routing and delivery are attempted.
 answer=$(curl --silent --request POST --header 'authorization: Bearer nr_test' --data '{"title":"smoke"}' \
     "$origin/webhook?channels=logs")
 case $answer in

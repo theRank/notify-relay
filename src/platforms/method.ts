@@ -1,5 +1,4 @@
-// For platforms that build the Request themselves: these methods are ones a Request refuses to carry, and
-// no endpoint takes them, so they are answered here rather than left to fail as an error of the relay's
+// Reject methods forbidden by Request with 405 before constructing it, avoiding a spurious 500.
 const UNSUPPORTED = new Set(['CONNECT', 'TRACE', 'TRACK'])
 
 export function unsupported(method: string): Response | undefined {

@@ -1,6 +1,5 @@
-// Bark's end-to-end encryption, as its app decrypts it (Model/Algorithm.swift): AES with the characters of
-// the key and the IV as bytes, GCM with the tag appended or CBC with PKCS#7, in base64. ECB, which the app
-// offers too, is left out: WebCrypto has none, and it gives equal blocks away
+// Match Bark's Model/Algorithm.swift: literal key/IV bytes; base64 GCM ciphertext with appended tag,
+// or CBC with PKCS#7. ECB is unsupported by WebCrypto and exposes repeated blocks.
 const MODES: Record<string, { name: string; ivLength: number }> = {
     GCM: { name: 'AES-GCM', ivLength: 12 },
     CBC: { name: 'AES-CBC', ivLength: 16 },
@@ -21,8 +20,7 @@ export async function seal(plaintext: string, encryption: string, key: string, i
     return { ciphertext: base64(new Uint8Array(sealed)), iv: nonce }
 }
 
-// A fresh IV per push, never the one saved in the app, since GCM under a repeated IV leaks plaintext. Its
-// characters are base64url, 6 random bits each
+// Never reuse the app's saved IV: GCM nonce reuse leaks plaintext. Base64url gives 6 random bits per byte.
 function randomIv(length: number): string {
     return base64(crypto.getRandomValues(new Uint8Array((length * 3) / 4)))
         .replaceAll('+', '-')

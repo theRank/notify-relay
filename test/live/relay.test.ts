@@ -128,8 +128,7 @@ describe('live', () => {
         expect(response.status).toBe(413)
     })
 
-    // A platform may read a body of unknown length differently from one with a Content-Length, as Azure's
-    // host does, and a stream of our own has no length, so it goes out chunked
+    // Azure handles chunked and known-length bodies differently; a custom stream exercises the former.
     it('takes a body sent chunked', async () => {
         const json = JSON.stringify({ title: title('loki'), text: 'Sent chunked, without a length.' })
         const body = new ReadableStream({
@@ -153,44 +152,34 @@ describe('live', () => {
         if (flags!.some((flag) => flag.toLowerCase() === '\\junk')) console.warn(`${channel}: landed in junk`)
     }, 90_000)
 
-    // Nothing reads a push back, so the test sees as far as the server accepting it; the phone shows the
-    // rest, in a group of its own that Bark can mute
+    // These optional channels verify provider acceptance only; inspect rendering on the device or in chat.
     it.skipIf(!vars.CHANNEL_BARK_TYPE)('pushes through Bark', async () => {
         expect(await send('bark', false, { group: 'notify-relay live test' })).toEqual({ messages: [{ delivered: ['bark'], failed: [] }] })
     })
 
-    // Nothing reads the post back; the channel shows the header, the mrkdwn and the link
     it.skipIf(!vars.CHANNEL_SLACK_TYPE)('posts to Slack, with mrkdwn and a link', async () => {
         const rich = `Sent through *slack* on ${vars.LIVE_TARGET} by the live test, as _mrkdwn_.`
         const outcome = { messages: [{ delivered: ['slack'], failed: [] }] }
         expect(await send('slack', false, { rich, url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
-    // Nothing reads the post back; the channel shows the embed: its title linked, the Markdown, and the
-    // orange of a high message
     it.skipIf(!vars.CHANNEL_DISCORD_TYPE)('posts to Discord, as an embed with Markdown', async () => {
         const rich = `Sent through **discord** on ${vars.LIVE_TARGET} by the live test, as _Markdown_.`
         const outcome = { messages: [{ delivered: ['discord'], failed: [] }] }
         expect(await send('discord', false, { rich, level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
-    // Nothing reads the post back; the group shows the card: its orange header, the Markdown, and the
-    // link it opens. A secret, when set, signs the post, and Feishu refuses one signed wrong
     it.skipIf(!vars.CHANNEL_FEISHU_TYPE)('posts to Feishu, as a card with Markdown', async () => {
         const rich = `Sent through **feishu** on ${vars.LIVE_TARGET} by the live test, as *Markdown*.`
         const outcome = { messages: [{ delivered: ['feishu'], failed: [] }] }
         expect(await send('feishu', false, { rich, level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
-    // Nothing reads the message back; the chat shows it: the title in bold, linked, then the text. It goes
-    // as a classic message, as one without rich does
     it.skipIf(!vars.CHANNEL_TELEGRAM_TYPE)('sends to Telegram, as a classic message', async () => {
         const outcome = { messages: [{ delivered: ['telegram'], failed: [] }] }
         expect(await send('telegram', false, { level: 'high', url: 'https://github.com/theRank/notify-relay' })).toEqual(outcome)
     })
 
-    // Nothing reads the message back; the chat shows it: the title in bold, then the Markdown and its table.
-    // Low, so it arrives silently
     it.skipIf(!vars.CHANNEL_TELEGRAM_TYPE)('sends to Telegram, as a rich message with Markdown', async () => {
         const rich = [
             `Sent through **telegram** on ${vars.LIVE_TARGET} by the live test, as a _rich message_.`,

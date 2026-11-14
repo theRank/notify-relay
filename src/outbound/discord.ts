@@ -29,9 +29,7 @@ export const discord: Outbound = {
     },
 }
 
-// Discord renders Markdown in an embed's title and description and shows any punctuation after a
-// backslash as it is, but a push notification shows both raw, backslashes included. So only what
-// Discord would render gets one
+// Push previews show raw backslashes, so escape only punctuation Discord would render as markup.
 const MARKUP = new RegExp(
     [
         // A link, matched first to be kept whole, as an escape in one would break it
@@ -64,8 +62,7 @@ function escape(text: string): string {
     )
 }
 
-// Where a [ opens a [masked](link): the next ] on its line has a ( after it. Read once from the end, as
-// looking ahead from each [ would read the line again for every one of them
+// Scan backward for [masked](links) to avoid quadratic lookahead from each '['.
 function maskedLinks(text: string): Set<number> {
     const found = new Set<number>()
     let linked = false

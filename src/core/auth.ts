@@ -1,5 +1,5 @@
 const PREFIX = 'TOKEN_'
-// Not under TOKEN_, where a list of channels would be taken for a token
+// Keep allowlists outside TOKEN_ so they cannot authenticate a request.
 const ALLOW = /^ALLOW_(.+)_CHANNELS$/
 
 export function constantTimeEqual(a: string, b: string): boolean {
@@ -22,7 +22,7 @@ export function sources(env: object): string[] {
         .map(([name]) => sourceOf(name.slice(PREFIX.length)))
 }
 
-// Every token is compared, with no early return
+// Compare every token to avoid revealing the match's position through an early return.
 export function authenticate(header: string | null, env: object): string | undefined {
     const presented = /^Bearer (\S+)$/i.exec(header ?? '')?.[1]
     if (!presented) return undefined
@@ -43,22 +43,21 @@ export interface Allowlist {
     channels: string[]
 }
 
-// The lists of channels that sources are held to, one per setting
 export function allowlists(env: object): Allowlist[] {
     const lists: Allowlist[] = []
     for (const [name, value] of Object.entries(env)) {
         const id = ALLOW.exec(name)?.[1]
         if (id === undefined) continue
-        // A value that is no text is a list all the same, of nothing: the setting is there to hold back
+        // Fail closed when a configured allowlist is not a string.
         const names = typeof value === 'string' ? value.split(',').map((channel) => channel.trim()) : []
         lists.push({ source: sourceOf(id), channels: [...new Set(names.filter(Boolean))] })
     }
     return lists
 }
 
-// The channels a source may name, or undefined when it is held to no list and may name any
+// undefined means unrestricted; [] denies all channels.
 export function allowedChannels(source: string, env: object): string[] | undefined {
     const lists = allowlists(env).filter((list) => list.source === source)
-    // Settings that differ only in case name one source, which gets what all of them admit
+    // Intersect lists whose names normalize to the same source.
     return lists[0]?.channels.filter((channel) => lists.every((list) => list.channels.includes(channel)))
 }

@@ -10,7 +10,7 @@ export const webhook: Outbound = {
     params: ['URL'],
     optional: ['SECRET', 'TOKEN'],
     async send(message, params, { fetch, now, signal }) {
-        // Not `to`: it names the recipients of other channels, which are not the receiver's to know
+        // Omit other channels' recipients from the forwarded payload.
         const { source, title, text, rich, level, url, key, group } = message
         const body = JSON.stringify({ source, title, text, rich, level, url, key, group })
         const signed = params.SECRET !== undefined ? await sign(params.SECRET, Math.floor(now() / 1000), body) : {}
@@ -22,8 +22,7 @@ export const webhook: Outbound = {
                 ...signed,
             },
             body,
-            // Followed, a 301 or 302 turns the POST into a GET without the body, which the page it lands on
-            // may well answer with 200
+            // A redirect could turn POST into a bodyless GET and falsely appear successful.
             redirect: 'manual',
             signal,
         })
@@ -40,7 +39,7 @@ async function sign(secret: string, timestamp: number, body: string): Promise<Re
     }
 }
 
-// As https://www.standardwebhooks.com has it, so a receiver can check a post with a library of its own
+// Standard Webhooks signing format: https://www.standardwebhooks.com
 export async function signature(secret: string, id: string, timestamp: number, body: string): Promise<string> {
     const key = await crypto.subtle.importKey('raw', decode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
     const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${body}`)))
