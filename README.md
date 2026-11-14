@@ -51,7 +51,7 @@ names are the deployment's own (see [Channels](#channels)), not channel types.
 | `text` | no | Plain text |
 | `rich` | no | Formatted text in the channel's own markup: HTML for `smtp` and `gmail`, mrkdwn for `slack`, Markdown where a channel renders it |
 | `level` | no | `low`, `normal` (default), `high` or `critical`. How loudly each channel notifies, never which channels |
-| `url` | no | A link back to the source; https only |
+| `url` | no | A link back to the source; https only, with no whitespace or control characters in it |
 | `key` | no | On channels that support it, a new message with the same key replaces the previous one |
 | `group` | no | Display grouping |
 | `to` | no | Recipients by channel name, e.g. `{"mail": "ops@example.com"}`; see [Recipients](#recipients) |
