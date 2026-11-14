@@ -10,16 +10,17 @@ same request. There is no queue, no database and no history.
   default channel.
 - **The sender owns the content.** Channels put each field in its slot and add nothing; the relay never
   joins, converts or strips text. A sender writing for a constrained channel controls every character
-  that arrives.
+  that arrives. Only an adapter for a payload its sender cannot shape, such as `/alertmanager`, writes
+  the message itself.
 - **Adapters on both sides.** Inbound adapters turn a sender's native payload into one message format;
   outbound adapters turn that message into a channel's API call. The core knows neither.
 - **Not a pager.** If something must wake you up, send it to a paging service directly. A relay outage
   should cost you routine messages, not an incident.
 
 ```text
-inbound adapters          message           outbound adapters
-/webhook  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack, discord, feishu,
-                                           telegram, webhook
+inbound adapters               message           outbound adapters
+/webhook, /alertmanager  ──→  Message  ──→  deliver  ──→  loki, smtp, gmail, bark, ntfy, slack,
+                                                          discord, feishu, telegram, webhook
 ```
 
 ## API
@@ -77,6 +78,44 @@ Each entry must name a channel in `channels` or `fallback`, of a type that takes
 `gmail`), written in that type's syntax and admitted by the channel's `ALLOW_TO`; otherwise the request is
 a 400 and nothing is delivered. A channel without an entry, a fallback included, uses its own recipients.
 Any sender token can reach whoever `ALLOW_TO` admits, so keep it narrow.
+
+### Alertmanager and Grafana
+
+`/alertmanager` takes the
+[webhook notification](https://prometheus.io/docs/alerting/latest/configuration/#webhook_config) of
+Prometheus Alertmanager. Grafana's
+[webhook contact point](https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/integrations/webhook-notifier/)
+posts the same, with fields of its own that the relay does not read. Give either the URL, channels
+included, and the token as a bearer credential: the `Bearer` authorization scheme and its credentials in
+Grafana, `http_config.authorization.credentials` in Alertmanager.
+
+```http
+POST /alertmanager?channels=discord HTTP/1.1
+Authorization: Bearer nr_...
+```
+
+A notification is about a group of alerts, and is sent again whenever one of them changes. It becomes one
+message, as a message per alert would repeat every alert of the group each time:
+
+| Field | Value |
+|---|---|
+| `title` | `[FIRING:2] HostDown`, counting the alerts that fire, or `[RESOLVED] HostDown` once none does. The name is the `alertname` the alerts share, else the values of the labels they are grouped by |
+| `text` | A paragraph per alert: its `summary` and `description` annotations or, when it has neither, the labels that tell it from the others. Firing alerts come first, and the resolved ones among them start with `[resolved]` |
+| `level` | `normal` for a resolved group. A firing one has the level of its most severe firing alert, by the `severity` label: `critical` is `critical`, `warning` is `high`, `info` is `normal`, and any other value, or no label, is `high` |
+| `url` | The `generatorURL` the alerts share, else `externalURL`. Left out when neither is a link `url` takes |
+| `key` | `groupKey`, so on a channel that replaces by key, a group's notification replaces its previous one |
+| `group` | The name in the title |
+
+- What the sender groups by, how often it repeats and whether it reports resolved alerts stay its own
+  settings. The relay adds no grouping and removes no repeats.
+- The sender cannot be told to write less, so here, and only here, the relay shortens: the name is cut at
+  100 characters and an alert at 300, and the text lists the alerts that fit in 1,200 characters and
+  3,600 bytes, ending with `… and 5 more` for the rest. Alerts the sender left out itself
+  (`truncatedAlerts`) are counted in.
+- A notification without alerts is a 204. A body without an `alerts` array, or with an alert whose
+  `status` is neither `firing` nor `resolved` or whose labels or annotations are not strings, is a 400.
+- An alert about the relay's own availability cannot arrive through the relay. Keep a second contact
+  point, such as mail, that does not pass through it.
 
 ### Responses
 

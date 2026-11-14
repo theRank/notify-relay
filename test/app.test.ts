@@ -145,6 +145,51 @@ describe('POST /webhook', () => {
     })
 })
 
+describe('POST /alertmanager', () => {
+    const firing = { status: 'firing', labels: { alertname: 'HostDown', host: 'a' }, annotations: { summary: 'a is down' } }
+
+    it('delivers a group of alerts as one message, under the source the token belongs to', async () => {
+        const { pushed, send } = setup()
+        const response = await send('/alertmanager?channels=loki', authorized({ alerts: [firing], groupKey: 'g1' }))
+
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({ messages: [{ delivered: ['loki'], failed: [] }] })
+        expect(pushed).toEqual([
+            {
+                streams: [
+                    {
+                        stream: { job: 'notify-relay', source: 'github', level: 'high' },
+                        values: [
+                            [
+                                '1760000000000000000',
+                                JSON.stringify({ title: '[FIRING:1] HostDown', text: 'a is down', key: 'g1', group: 'HostDown' }),
+                            ],
+                        ],
+                    },
+                ],
+            },
+        ])
+    })
+
+    it('answers 204 to a group without alerts, delivering nothing', async () => {
+        const { pushed, send } = setup()
+        const response = await send('/alertmanager?channels=loki', authorized({ alerts: [] }))
+        expect(response.status).toBe(204)
+        expect(pushed).toEqual([])
+    })
+
+    it('asks for a token, routes by the URL and checks the body like any endpoint', async () => {
+        const { pushed, send } = setup()
+        expect((await send('/alertmanager?channels=loki', authorized({ alerts: [firing] }, 'nr_wrong'))).status).toBe(401)
+        expect((await send('/alertmanager', authorized({ alerts: [firing] }))).status).toBe(400)
+
+        const response = await send('/alertmanager?channels=loki', authorized({ title: 'deploy done' }))
+        expect(response.status).toBe(400)
+        expect(await response.json()).toEqual({ error: 'alerts must be an array' })
+        expect(pushed).toEqual([])
+    })
+})
+
 describe('recipients a message names in to', () => {
     const TOKEN_URL = 'https://oauth2.googleapis.com/token'
     const mail = (name: string, to: string) => ({

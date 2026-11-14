@@ -1,4 +1,5 @@
 import { BadRequest } from '../core/http'
+import { refuseLink } from '../core/link'
 import { LEVELS, type Draft, type Inbound, type Level } from '../core/message'
 
 const FIELDS = new Set(['title', 'text', 'rich', 'level', 'url', 'key', 'group', 'to'])
@@ -40,11 +41,9 @@ function level(value: unknown): Level {
 }
 
 function https(value: unknown): string {
-    if (typeof value !== 'string' || !URL.canParse(value) || new URL(value).protocol !== 'https:') throw new BadRequest('url must be https')
-    // A URL parser drops these around a link and within it, so one that parses may still be no link to a
-    // channel, which gets it as written
-    if (/[\s\0-\x1f\x7f]/.test(value)) throw new BadRequest('url must not contain whitespace or control characters')
-    return value
+    const refused = refuseLink(value)
+    if (refused !== undefined) throw new BadRequest(refused)
+    return value as string
 }
 
 function recipients(value: unknown): Record<string, string> {
